@@ -1,2 +1,2 @@
 [tool.vercel]
-entrypoint = "meddeck:app"
+entrypoint = "app:app"
