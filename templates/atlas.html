@@ -1,14 +1,84 @@
 {% extends "base.html" %}
 {% block title %}Atlas | MEDDECK{% endblock %}
 {% block content %}
-<section class="welcome-row"><div><p class="eyebrow">EXPLORAR CONEXIONES</p><h1>Atlas de fenotipos</h1><p class="muted">Un mapa navegable entre enfermedades y fenotipos descritos en HPO.</p></div><a class="button secondary" href="{{ url_for('sources') }}">Explorar fuentes</a></section>
+<section class="welcome-row">
+  <div>
+    <p class="eyebrow">EXPLORE CONNECTIONS</p>
+    <h1>Phenotype Atlas</h1>
+    <p class="muted">An interactive, navigable map of diseases and phenotypes described in HPO.</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('sources') }}">Explore sources</a>
+</section>
+
 <section class="panel">
   {% if data_loaded %}
-    <div class="legend"><span><i class="dot disease"></i> Enfermedad</span><span><i class="dot phenotype"></i> Fenotipo HPO</span><span class="muted">Se muestran hasta 150 enfermedades y 10 términos por enfermedad.</span></div>
-    <div class="graph" aria-label="Relaciones entre enfermedad y fenotipo HPO">
-      {% for edge in edges %}<article class="graph-edge"><span class="node disease-node">{{ edge.disease }} <small>{{ edge.disease_id }}</small></span><span class="edge-line" aria-hidden="true">······</span><span class="node phenotype-node">{{ edge.phenotype }} <small>{{ edge.phenotype_id }}</small></span></article>{% endfor %}
+    <div class="view-switcher" role="tablist">
+      <button type="button" class="view-btn active" id="btn-atlas-graph" onclick="switchAtlasView('graph')">🌐 Interactive Map</button>
+      <button type="button" class="view-btn" id="btn-atlas-list" onclick="switchAtlasView('list')">📋 Relationship List</button>
     </div>
-    {% if not edges %}<p>No se encontraron relaciones para mostrar.</p>{% endif %}
-  {% else %}<div class="empty-state"><div class="empty-icon">⌘</div><h2>El atlas espera sus datos</h2><p>Configura <code>HPOA_PATH</code> y <code>HPO_OBO_PATH</code> con los archivos oficiales de Human Phenotype Ontology para ver relaciones reales.</p><p>No se muestran datos médicos de ejemplo para evitar confundirlos con evidencia real.</p><a href="{{ url_for('sources') }}">Ver instrucciones y fuentes</a></div>{% endif %}
+
+    <div id="atlas-graph-section">
+      <div id="atlas-graph-container" style="height: 540px;"></div>
+    </div>
+
+    <div id="atlas-list-section" hidden>
+      <div class="legend">
+        <span><i class="dot disease"></i> Disease</span>
+        <span><i class="dot phenotype"></i> HPO Phenotype</span>
+        <span class="muted">Up to 150 diseases and 10 terms per disease are shown.</span>
+      </div>
+      <div class="graph" aria-label="Disease and HPO phenotype relationships">
+        {% for edge in edges %}
+        <article class="graph-edge">
+          <span class="node disease-node">{{ edge.disease }} <small>{{ edge.disease_id }}</small></span>
+          <span class="edge-line" aria-hidden="true">······</span>
+          <span class="node phenotype-node">{{ edge.phenotype }} <small>{{ edge.phenotype_id }}</small></span>
+        </article>
+        {% endfor %}
+      </div>
+      {% if not edges %}<p>No relationships found to display.</p>{% endif %}
+    </div>
+
+    <script>
+      function switchAtlasView(view) {
+        const graphSec = document.getElementById("atlas-graph-section");
+        const listSec = document.getElementById("atlas-list-section");
+        const btnGraph = document.getElementById("btn-atlas-graph");
+        const btnList = document.getElementById("btn-atlas-list");
+
+        if (view === "graph") {
+          graphSec.hidden = false;
+          listSec.hidden = true;
+          btnGraph.classList.add("active");
+          btnList.classList.remove("active");
+          if (window.atlasGraphInstance) window.atlasGraphInstance.resize();
+        } else {
+          graphSec.hidden = true;
+          listSec.hidden = false;
+          btnGraph.classList.remove("active");
+          btnList.classList.add("active");
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const rawData = {{ atlas_graph_json|safe if atlas_graph_json else '{"nodes":[],"links":[]}' }};
+        if (rawData && rawData.nodes && rawData.nodes.length > 0) {
+          window.atlasGraphInstance = new MeddeckGraph("atlas-graph-container", {
+            height: 540,
+            showControls: true
+          });
+          window.atlasGraphInstance.setData(rawData);
+        }
+      });
+    </script>
+  {% else %}
+    <div class="empty-state">
+      <div class="empty-icon">⌘</div>
+      <h2>The atlas is waiting for its data</h2>
+      <p>Configure <code>HPOA_PATH</code> and <code>HPO_OBO_PATH</code> with the official Human Phenotype Ontology files to view real relationships.</p>
+      <p>No sample medical data is shown to avoid confusing it with real evidence.</p>
+      <a class="button secondary" href="{{ url_for('sources') }}">View instructions and sources</a>
+    </div>
+  {% endif %}
 </section>
 {% endblock %}

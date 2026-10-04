@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Fuentes confiables | MEDDECK{% endblock %}
+{% block title %}Trusted Sources | MEDDECK{% endblock %}
 {% block content %}
-<section class="welcome-row"><div><p class="eyebrow">REFERENCIAS EXTERNAS</p><h1>Fuentes confiables</h1><p class="muted">Enlaces directos para consultar la fuente original. MEDDECK no copia ni reemplaza sus contenidos.</p></div></section>
-<section class="source-grid">{% for name,description,url in sources %}<article class="source-card"><p class="eyebrow">FUENTE</p><h2>{{ name }}</h2><p>{{ description }}</p><a href="{{ url }}" target="_blank" rel="noopener noreferrer">Visitar {{ name }} ↗</a></article>{% endfor %}</section>
-<section class="notice"><strong>Datos biomédicos y permisos</strong><p>El atlas y las asociaciones candidato-gen usan la ontología y archivos públicos HPO. OMIM tiene condiciones de uso y servicios que pueden requerir acceso autorizado; esta versión no realiza scraping ni integra su API. PubMed se ofrece mediante enlaces de búsqueda. Antes de incorporar o redistribuir datos, revisa licencia, atribución, fecha y condiciones de cada fuente.</p></section>
+<section class="welcome-row"><div><p class="eyebrow">EXTERNAL REFERENCES</p><h1>Trusted Sources</h1><p class="muted">Direct links to consult the original source. MEDDECK does not copy or replace their content.</p></div></section>
+<section class="source-grid">{% for name,description,url in sources %}<article class="source-card"><p class="eyebrow">SOURCE</p><h2>{{ name }}</h2><p>{{ description }}</p><a href="{{ url }}" target="_blank" rel="noopener noreferrer">Visit {{ name }} ↗</a></article>{% endfor %}</section>
+<section class="notice"><strong>Biomedical data and permissions</strong><p>The atlas and candidate-gene associations use the HPO ontology and public HPO files. OMIM has terms of use and services that may require authorized access; this version does not scrape or integrate its API. PubMed is offered via search links. Before incorporating or redistributing data, review the license, attribution, date and conditions of each source.</p></section>
 {% endblock %}

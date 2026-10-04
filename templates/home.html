@@ -1,29 +1,29 @@
 {% extends "base.html" %}
-{% block title %}MEDDECK | Un espacio para conectar{% endblock %}
+{% block title %}MEDDECK | A space to connect{% endblock %}
 {% block content %}
 <section class="hero">
   <div class="hero-copy">
-    <p class="eyebrow">COMUNIDAD · CONOCIMIENTO · INVESTIGACIÓN</p>
-    <h1>Las enfermedades raras merecen <em>conexiones extraordinarias.</em></h1>
-    <p class="lead">Un espacio para que pacientes, profesionales e investigadores compartan conocimiento confiable y se encuentren entre sí.</p>
-    <div class="actions"><a class="button primary" href="{{ url_for('register') }}">Crear una cuenta</a><a class="button secondary" href="{{ url_for('login') }}">Ya tengo cuenta</a></div>
-    <p class="small-note">Tu información médica no es pública. Tú decides qué compartir en las comunidades.</p>
+    <p class="eyebrow">COMMUNITY · KNOWLEDGE · RESEARCH</p>
+    <h1>Rare diseases deserve <em>extraordinary connections.</em></h1>
+    <p class="lead">A space for patients, professionals and researchers to share reliable knowledge and find each other.</p>
+    <div class="actions"><a class="button primary" href="{{ url_for('register') }}">Create an account</a><a class="button secondary" href="{{ url_for('login') }}">I already have an account</a></div>
+    <p class="small-note">Your medical information is not public. You decide what to share in the communities.</p>
   </div>
-  <div class="helix-card" aria-label="Ilustración decorativa de una doble hélice">
-    <div class="helix-caption">UNA RED DE APOYO Y EVIDENCIA</div>
-    <svg viewBox="0 0 400 360" role="img" aria-label="Ilustración abstracta de una doble hélice genética">
+  <div class="helix-card" aria-label="Decorative double helix illustration">
+    <div class="helix-caption">A NETWORK OF SUPPORT AND EVIDENCE</div>
+    <svg viewBox="0 0 400 360" role="img" aria-label="Abstract illustration of a genetic double helix">
       <path class="helix-line a" d="M115 20 C330 80 70 130 285 180 S70 280 285 340"/>
       <path class="helix-line b" d="M285 20 C70 80 330 130 115 180 S330 280 115 340"/>
       <g class="rungs"><path d="M145 35L255 35"/><path d="M197 62L203 62"/><path d="M250 88L150 88"/><path d="M230 115L170 115"/><path d="M175 145L225 145"/><path d="M145 180L255 180"/><path d="M170 210L230 210"/><path d="M225 240L175 240"/><path d="M250 270L150 270"/><path d="M202 300L198 300"/><path d="M145 325L255 325"/></g>
       <circle cx="200" cy="180" r="9" fill="#e59b69"/><circle cx="150" cy="88" r="5" fill="#548b81"/><circle cx="250" cy="270" r="5" fill="#548b81"/>
     </svg>
-    <div class="helix-foot">Cada historia puede aportar a una pregunta científica.</div>
+    <div class="helix-foot">Every story can contribute to a scientific question.</div>
   </div>
 </section>
 <section class="value-grid">
-  <article class="value-card"><span class="icon">01</span><h2>Entender</h2><p>Información de fuentes confiables, presentada con palabras claras y enlaces para profundizar.</p></article>
-  <article class="value-card"><span class="icon">02</span><h2>Encontrarse</h2><p>Comunidades por enfermedad o gen para intercambiar experiencias con respeto y privacidad.</p></article>
-  <article class="value-card"><span class="icon">03</span><h2>Investigar</h2><p>Un atlas que conecta enfermedades y fenotipos HPO, con acceso a literatura científica.</p></article>
+  <article class="value-card"><span class="icon">01</span><h2>Understand</h2><p>Information from reliable sources, presented in clear language with links to go deeper.</p></article>
+  <article class="value-card"><span class="icon">02</span><h2>Connect</h2><p>Communities by disease or gene to share experiences with respect and privacy.</p></article>
+  <article class="value-card"><span class="icon">03</span><h2>Research</h2><p>An atlas connecting diseases and HPO phenotypes, with access to scientific literature.</p></article>
 </section>
-<section class="notice"><strong>Un límite importante</strong><p>MEDDECK no diagnostica ni calcula probabilidades clínicas. Las coincidencias de síntomas son orientativas y deben conversarse con un profesional de salud.</p></section>
+<section class="notice"><strong>An important limit</strong><p>MEDDECK does not diagnose or calculate clinical probabilities. Symptom matches are indicative and should be discussed with a healthcare professional.</p></section>
 {% endblock %}

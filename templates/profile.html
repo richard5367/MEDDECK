@@ -1,21 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Mi perfil | MEDDECK{% endblock %}
+{% block title %}My Profile | MEDDECK{% endblock %}
 {% block content %}
-<section class="form-shell narrow"><p class="eyebrow">TUS DATOS, TU DECISIÓN</p><h1>Editar perfil</h1>
+<section class="form-shell narrow"><p class="eyebrow">YOUR DATA, YOUR DECISION</p><h1>Edit profile</h1>
   <form method="post" class="form-card">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label>Nombre<input name="name" value="{{ user.name }}" required maxlength="100"></label>
-    <label>{{ "Condición" if user.role != "patient" or user.diagnosed else "Condición (opcional)" }}<input name="condition" value="{{ user.condition }}" maxlength="160"></label>
-    {% if user.role == "patient" %}<label>Síntomas compartidos<textarea name="symptoms" rows="5" maxlength="6000" required>{{ user.symptoms }}</textarea></label>{% endif %}
-    <label class="check-row"><input type="checkbox" name="consent_ai" value="yes" {% if user.consent_ai %}checked{% endif %}><span>Autorizo el envío de mis síntomas a OpenAI para sugerir términos HPO. Puedes retirar este consentimiento desmarcando la casilla y guardando.</span></label>
-    <label class="check-row"><input type="checkbox" name="consent_gene_graph" value="yes" {% if user.consent_gene_graph %}checked{% endif %}><span>Autorizo aparecer en el grafo global con mi nombre y mis genes candidatos. Solo será visible para usuarios con cuenta; al desmarcarlo dejarás de aparecer.</span></label>
-    <button class="button primary" type="submit">Guardar cambios</button>
+    <label>Name<input name="name" value="{{ user.name }}" required maxlength="100"></label>
+    <label>{{ "Condition" if user.role != "patient" or user.diagnosed else "Condition (optional)" }}<input name="condition" value="{{ user.condition }}" maxlength="160"></label>
+    {% if user.role == "patient" %}<label>Shared symptoms<textarea name="symptoms" rows="5" maxlength="6000" required>{{ user.symptoms }}</textarea></label>{% endif %}
+    <label class="check-row"><input type="checkbox" name="consent_ai" value="yes" {% if user.consent_ai %}checked{% endif %}><span>I authorize my symptoms to be sent to the AI provider to suggest HPO terms. You can withdraw this consent by unchecking the box and saving.</span></label>
+    <label class="check-row"><input type="checkbox" name="consent_gene_graph" value="yes" {% if user.consent_gene_graph %}checked{% endif %}><span>I authorize appearing in the global graph with my name and candidate genes. This will be visible to registered users; unchecking removes you.</span></label>
+    <button class="button primary" type="submit">Save changes</button>
   </form>
   <form method="post" action="{{ url_for('delete_account') }}" class="form-card delete-card">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <h2>Eliminar cuenta</h2><p>Esto elimina tu perfil, mensajes y membresías de esta instancia. La acción no se puede deshacer.</p>
-    <label>Escribe ELIMINAR para confirmar<input name="confirmation" required autocomplete="off"></label>
-    <button class="button danger" type="submit">Eliminar mi cuenta y mis datos</button>
+    <h2>Delete account</h2><p>This removes your profile, messages and memberships from this instance. This action cannot be undone.</p>
+    <label>Type DELETE to confirm<input name="confirmation" required autocomplete="off"></label>
+    <button class="button danger" type="submit">Delete my account and data</button>
   </form>
 </section>
 {% endblock %}

@@ -152,7 +152,7 @@ class WebTests(unittest.TestCase):
             "csrf_token": token, "email": "missing@example.org", "password": "wrong-password",
         })
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Correo o contraseña incorrectos.".encode(), response.data)
+        self.assertIn("Incorrect email or password.".encode(), response.data)
 
     def test_registration_login_and_private_dashboard(self):
         self.client.get("/register")
@@ -163,14 +163,14 @@ class WebTests(unittest.TestCase):
             "role": "patient", "diagnosed": "no", "symptoms": "example symptom",
         }, follow_redirects=True)
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Hola, Test Person", response.data)
+        self.assertIn(b"Hello, Test Person", response.data)
         self.client.post("/logout", data={"csrf_token": self.token()})
         self.client.get("/login")
         response = self.client.post("/login", data={
             "csrf_token": self.token(), "email": "patient@example.org",
             "password": "not-a-real-password",
         }, follow_redirects=True)
-        self.assertIn(b"Hola, Test Person", response.data)
+        self.assertIn(b"Hello, Test Person", response.data)
 
     def test_user_can_revoke_ai_consent_and_delete_account(self):
         self.client.get("/register")
@@ -193,7 +193,7 @@ class WebTests(unittest.TestCase):
             graph = self.client.get("/gene-graph")
             self.assertNotIn(b"Test Person", graph.data)
         self.client.post("/delete-account", data={
-            "csrf_token": self.token(), "confirmation": "ELIMINAR",
+            "csrf_token": self.token(), "confirmation": "DELETE",
         })
         with self.app.app_context():
             from meddeck import database
@@ -256,12 +256,12 @@ class WebTests(unittest.TestCase):
             os.environ, {"OPENAI_API_KEY": ""}
         ):
             response = self.client.get("/dashboard")
-            self.assertIn("Falta configurar OpenAI".encode(), response.data)
+            self.assertIn("AI is not configured".encode(), response.data)
         with patch("meddeck.load_hpo_data", return_value=hpo_data), patch.dict(
             os.environ, {"OPENAI_API_KEY": "test-key"}
         ):
             response = self.client.get("/dashboard")
-            self.assertIn("OpenAI está configurado".encode(), response.data)
+            self.assertIn("AI is configured".encode(), response.data)
 
     def test_symptom_analysis_saves_gene_candidates_and_joins_community(self):
         self.client.get("/register")
@@ -281,6 +281,10 @@ class WebTests(unittest.TestCase):
         )):
             response = self.client.post("/analyze", data={"csrf_token": self.token()}, follow_redirects=True)
             self.assertIn(b"GENE1", response.data)
+            self.assertIn(b"PATIENT HPO REPORT", response.data)
+            self.assertIn(b"HP:0000001", response.data)
+            self.assertIn(b"Test phenotype", response.data)
+            self.assertIn(b"Evidence: example symptom", response.data)
             graph = self.client.get("/gene-graph")
             self.assertIn(b"Candidate Patient", graph.data)
             self.assertIn(b"GENE1", graph.data)
@@ -297,6 +301,41 @@ class WebTests(unittest.TestCase):
             ).fetchone()
         self.assertEqual(json.loads(user["gene_candidates_json"])[0]["symbol"], "GENE1")
         self.assertIsNotNone(membership)
+
+    def test_load_dotenv_file(self):
+        from meddeck import load_dotenv_file
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8") as f:
+            f.write("TEST_ENV_MEDDECK_KEY=secret-12345\n# comment\nOTHER_KEY=\"hello world\"\n")
+            temp_env_path = f.name
+        try:
+            load_dotenv_file(temp_env_path)
+            self.assertEqual(os.environ.get("TEST_ENV_MEDDECK_KEY"), "secret-12345")
+            self.assertEqual(os.environ.get("OTHER_KEY"), "hello world")
+        finally:
+            if os.path.exists(temp_env_path):
+                os.remove(temp_env_path)
+
+    def test_community_and_patient_graphs(self):
+        self.client.get("/register")
+        self.client.post("/register", data={
+            "csrf_token": self.token(), "name": "Graph Member", "email": "graphmember@example.org",
+            "password": "not-a-real-password", "age": "28", "sex": "female",
+            "role": "patient", "diagnosed": "yes", "condition": "Rare Syndrome", "symptoms": "pain",
+            "consent_gene_graph": "yes",
+        })
+        resp = self.client.get("/dashboard")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"MeddeckGraph", resp.data)
+
+        # Test community view
+        from meddeck import database
+        with database(self.app.config["DATABASE"]) as db:
+            comm = db.execute("SELECT id FROM communities WHERE name='Rare Syndrome'").fetchone()
+        if comm:
+            comm_resp = self.client.get(f"/community/{comm['id']}")
+            self.assertEqual(comm_resp.status_code, 200)
+            self.assertIn(b"community-graph", comm_resp.data)
+            self.assertIn(b"MeddeckGraph", comm_resp.data)
 
 
 if __name__ == "__main__":

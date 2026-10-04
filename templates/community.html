@@ -1,8 +1,60 @@
 {% extends "base.html" %}
 {% block title %}{{ community.name }} | MEDDECK{% endblock %}
 {% block content %}
-<section class="welcome-row"><div><p class="eyebrow">COMUNIDAD · {{ "GEN" if community.basis == "gene" else "ENFERMEDAD" }}</p><h1>{{ community.name }}</h1><p class="muted">Un espacio para compartir experiencias e información con respeto. No sustituye la orientación profesional.</p></div><a class="button secondary" href="{{ url_for('dashboard') }}">Volver a mi espacio</a></section>
-<section class="panel"><h2>Conversación</h2><form method="post" class="post-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label for="body">Comparte un mensaje con la comunidad</label><textarea id="body" name="body" maxlength="2000" rows="3" required placeholder="Escribe con amabilidad; evita publicar datos personales o consejos como sustituto de atención médica."></textarea><button class="button primary" type="submit">Publicar</button></form>
-  {% if posts %}<ul class="post-list">{% for post in posts %}<li><strong>{{ post.name }}</strong><p>{{ post.body }}</p><time>{{ post.created_at }}</time></li>{% endfor %}</ul>{% else %}<p class="muted">Sé la primera persona en iniciar la conversación.</p>{% endif %}
+<section class="welcome-row">
+  <div>
+    <p class="eyebrow">COMMUNITY · {{ "CANDIDATE GENE" if community.basis == "candidate_gene" else ("GENE" if community.basis == "gene" else "DISEASE") }}</p>
+    <h1>{{ community.name }}</h1>
+    <p class="muted">A space to share experiences and information with respect. This does not replace professional medical guidance.</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('dashboard') }}">Back to my space</a>
 </section>
+
+<!-- Interactive Community Graph -->
+<section class="panel">
+  <div class="panel-heading">
+    <div>
+      <p class="eyebrow">COMMUNITY NETWORK</p>
+      <h2>Connection map</h2>
+    </div>
+    <span class="muted">{{ members|length }} connected member(s)</span>
+  </div>
+  <div id="community-graph" style="height: 380px;"></div>
+</section>
+
+<section class="panel">
+  <h2>Community conversation</h2>
+  <form method="post" class="post-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="body">Share a message with the community</label>
+    <textarea id="body" name="body" maxlength="2000" rows="3" required placeholder="Write kindly; avoid posting personal data or advice as a substitute for medical care."></textarea>
+    <button class="button primary" type="submit">Post</button>
+  </form>
+  {% if posts %}
+    <ul class="post-list">
+      {% for post in posts %}
+      <li>
+        <strong>{{ post.name }}</strong>
+        <p>{{ post.body }}</p>
+        <time>{{ post.created_at }}</time>
+      </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">Be the first person to start the conversation.</p>
+  {% endif %}
+</section>
+
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const rawData = {{ community_graph_json|safe if community_graph_json else '{"nodes":[],"links":[]}' }};
+    if (rawData && rawData.nodes && rawData.nodes.length > 0) {
+      const graph = new MeddeckGraph("community-graph", {
+        height: 380,
+        showControls: true
+      });
+      graph.setData(rawData);
+    }
+  });
+</script>
 {% endblock %}

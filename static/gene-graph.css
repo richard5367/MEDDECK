@@ -1,2 +1,309 @@
-.gene-network{position:relative;overflow:hidden}.gene-network-heading{display:flex;align-items:center;gap:15px;flex-wrap:wrap}.gene-node{display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:13px 18px;border:2px solid #53877d;border-radius:50%;background:#e5f0ec;font-weight:800;color:#244f48}.gene-connections{margin:14px 0 8px 38px;border-left:2px solid #9bb8af}.gene-connection{position:relative;display:flex;align-items:center;min-height:46px;padding-left:30px}.connector{position:absolute;left:0;width:25px;border-top:2px solid #9bb8af}.user-node{display:inline-block;padding:7px 12px;border:1px solid #dce7e2;border-radius:18px;background:#fff}.join-gene-form{margin:14px 0 0}.graph-invite{display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap}.graph-invite p{flex:1 1 340px;margin:0;color:#627774}
-@media(max-width:760px){.gene-network-heading{align-items:flex-start;flex-direction:column}.gene-connections{margin-left:18px}}
+/* MEDDECK Graph Visualization Styles */
+.meddeck-graph-wrapper {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(34, 74, 66, 0.05);
+  margin: 18px 0;
+}
+
+.graph-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 18px;
+  background: #f8faf9;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+.graph-search-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 220px;
+  flex: 1 1 240px;
+}
+
+.graph-search-group .search-icon {
+  position: absolute;
+  left: 10px;
+  font-size: 0.85rem;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.graph-search-input {
+  width: 100%;
+  padding: 7px 10px 7px 32px !important;
+  font-size: 0.86rem !important;
+  border-radius: 8px !important;
+  background: #ffffff !important;
+  border: 1px solid var(--line) !important;
+}
+
+.graph-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.filter-chip input {
+  display: none;
+}
+
+.filter-chip.active {
+  background: #eaf3f0;
+  border-color: var(--green);
+  color: var(--green-dark);
+}
+
+.filter-chip.filter-gene.active {
+  background: #ede9fe;
+  border-color: #7c3aed;
+  color: #5b21b6;
+}
+
+.filter-chip.filter-phenotype.active {
+  background: #fef3c7;
+  border-color: #d97706;
+  color: #92400e;
+}
+
+.filter-chip.filter-community.active {
+  background: #e0f2fe;
+  border-color: #0284c7;
+  color: #075985;
+}
+
+.graph-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-graph-action {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-graph-action:hover {
+  background: #eaf3f0;
+  border-color: var(--green);
+}
+
+.graph-viewport {
+  position: relative;
+  width: 100%;
+  height: 520px;
+  background: radial-gradient(circle at 50% 50%, #fafcfb 0%, #f3f7f5 100%);
+  overflow: hidden;
+  cursor: grab;
+}
+
+.graph-viewport canvas {
+  display: block;
+}
+
+.graph-detail-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: min(300px, calc(100% - 32px));
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.detail-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.btn-close-detail {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 4px;
+}
+
+.detail-title {
+  margin: 4px 0 6px;
+  font-size: 1.1rem;
+}
+
+.detail-code code {
+  background: var(--mint);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+
+.detail-connections-count {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin: 6px 0 10px;
+}
+
+.detail-neighbors-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 150px;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+
+.neighbor-chip {
+  padding: 5px 8px;
+  background: #f8faf9;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.neighbor-chip:hover {
+  background: #eaf3f0;
+}
+
+.small-btn {
+  padding: 6px 12px !important;
+  font-size: 0.82rem !important;
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* Stats Ribbon */
+.graph-stats-ribbon {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.graph-stat-card {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stat-icon {
+  font-size: 1.6rem;
+}
+
+.stat-num {
+  display: block;
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--green-dark);
+}
+
+.stat-label {
+  font-size: 0.76rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* View Switcher */
+.view-switcher {
+  display: inline-flex;
+  background: #eaf3f0;
+  padding: 3px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.view-btn {
+  border: none;
+  background: none;
+  padding: 7px 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--muted);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.view-btn.active {
+  background: #ffffff;
+  color: var(--green-dark);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+/* Existing Fallback Network Cards */
+.gene-network { position: relative; overflow: hidden; }
+.gene-network-heading { display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+.gene-node { display: inline-flex; align-items: center; justify-content: center; min-width: 76px; padding: 13px 18px; border: 2px solid #53877d; border-radius: 50%; background: #e5f0ec; font-weight: 800; color: #244f48; }
+.gene-connections { margin: 14px 0 8px 38px; border-left: 2px solid #9bb8af; }
+.gene-connection { position: relative; display: flex; align-items: center; min-height: 46px; padding-left: 30px; }
+.connector { position: absolute; left: 0; width: 25px; border-top: 2px solid #9bb8af; }
+.user-node { display: inline-block; padding: 7px 12px; border: 1px solid #dce7e2; border-radius: 18px; background: #fff; }
+.join-gene-form { margin: 14px 0 0; }
+.graph-invite { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.graph-invite p { flex: 1 1 340px; margin: 0; color: #627774; }
+
+@media(max-width: 760px) {
+  .gene-network-heading { align-items: flex-start; flex-direction: column; }
+  .gene-connections { margin-left: 18px; }
+  .graph-controls { flex-direction: column; align-items: stretch; }
+  .graph-actions { justify-content: flex-end; }
+}

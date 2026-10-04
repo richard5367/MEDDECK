@@ -1,25 +1,127 @@
 {% extends "base.html" %}
-{% block title %}Grafo de genes | MEDDECK{% endblock %}
+{% block title %}Gene Graph | MEDDECK{% endblock %}
 {% block content %}
-<section class="welcome-row"><div><p class="eyebrow">CONEXIONES CON CONSENTIMIENTO</p><h1>Grafo de genes</h1><p class="muted">Conecta asociaciones HPO de fenotipos con genes candidatos y personas que aceptaron mostrarse por nombre.</p></div><a class="button secondary" href="{{ url_for('dashboard') }}">Mi espacio</a></section>
-<section class="notice"><strong>Los genes no están confirmados como afectados</strong><p>Este grafo relaciona genes con fenotipos descritos y con los nombres de personas que dieron consentimiento explícito. No muestra correos ni síntomas. Una asociación no demuestra que una persona tenga una variante ni que el gen explique su condición.</p></section>
-{% if genes %}
-  {% for gene in genes %}
-  <section class="panel gene-network" aria-label="Relaciones del gen {{ gene.symbol }}">
-    <div class="gene-network-heading"><span class="gene-node">{{ gene.symbol }}</span><span class="muted">Gen candidato · {{ gene.members|length }} participante(s) visible(s)</span></div>
-    <div class="gene-connections">
-      {% for member in gene.members %}
-      <div class="gene-connection"><span class="connector" aria-hidden="true"></span><span class="user-node">{{ member.name }}</span></div>
-      {% endfor %}
+<section class="welcome-row">
+  <div>
+    <p class="eyebrow">CONNECTIONS WITH CONSENT</p>
+    <h1>Gene and community graph</h1>
+    <p class="muted">Links HPO phenotype associations with candidate genes and people who agreed to be shown by name.</p>
+  </div>
+  <a class="button secondary" href="{{ url_for('dashboard') }}">My Space</a>
+</section>
+
+<section class="notice">
+  <strong>Genes are not confirmed as affected</strong>
+  <p>This graph relates genes to described phenotypes and the names of people who gave explicit consent. It does not show emails or symptoms. An association does not prove that a person has a variant or that the gene explains their condition.</p>
+</section>
+
+{% if stats %}
+<div class="graph-stats-ribbon">
+  <div class="graph-stat-card">
+    <span class="stat-icon">🧬</span>
+    <div>
+      <span class="stat-num">{{ stats.genes_count }}</span>
+      <span class="stat-label">Candidate genes</span>
     </div>
-    <form method="post" action="{{ url_for('join_candidate_gene') }}" class="join-gene-form">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <input type="hidden" name="gene" value="{{ gene.symbol }}">
-      <button class="button secondary" type="submit">Unirme a la comunidad para conversar</button>
-    </form>
-  </section>
-  {% endfor %}
+  </div>
+  <div class="graph-stat-card">
+    <span class="stat-icon">👤</span>
+    <div>
+      <span class="stat-num">{{ stats.participants_count }}</span>
+      <span class="stat-label">Visible participants</span>
+    </div>
+  </div>
+  <div class="graph-stat-card">
+    <span class="stat-icon">🏷️</span>
+    <div>
+      <span class="stat-num">{{ stats.phenotypes_count }}</span>
+      <span class="stat-label">HPO Phenotypes</span>
+    </div>
+  </div>
+  <div class="graph-stat-card">
+    <span class="stat-icon">🌐</span>
+    <div>
+      <span class="stat-num">{{ stats.communities_count }}</span>
+      <span class="stat-label">Communities</span>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if genes %}
+  <div class="view-switcher" role="tablist">
+    <button type="button" class="view-btn active" id="btn-view-graph" onclick="switchView('graph')">🌐 Interactive Network Map</button>
+    <button type="button" class="view-btn" id="btn-view-cards" onclick="switchView('cards')">📋 Card View</button>
+  </div>
+
+  <div id="graph-view-section">
+    <div id="main-gene-graph" style="height: 560px;"></div>
+  </div>
+
+  <div id="cards-view-section" hidden>
+    {% for gene in genes %}
+    <section class="panel gene-network" aria-label="Connections for gene {{ gene.symbol }}">
+      <div class="gene-network-heading">
+        <span class="gene-node">{{ gene.symbol }}</span>
+        <span class="muted">Candidate gene · {{ gene.members|length }} visible participant(s)</span>
+      </div>
+      <div class="gene-connections">
+        {% for member in gene.members %}
+        <div class="gene-connection">
+          <span class="connector" aria-hidden="true"></span>
+          <span class="user-node">{{ member.name }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      <form method="post" action="{{ url_for('join_candidate_gene') }}" class="join-gene-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="gene" value="{{ gene.symbol }}">
+        <button class="button secondary" type="submit">Join community to chat</button>
+      </form>
+    </section>
+    {% endfor %}
+  </div>
+
+  <script>
+    function switchView(view) {
+      const graphSec = document.getElementById("graph-view-section");
+      const cardsSec = document.getElementById("cards-view-section");
+      const btnGraph = document.getElementById("btn-view-graph");
+      const btnCards = document.getElementById("btn-view-cards");
+
+      if (view === "graph") {
+        graphSec.hidden = false;
+        cardsSec.hidden = true;
+        btnGraph.classList.add("active");
+        btnCards.classList.remove("active");
+        if (window.networkGraphInstance) {
+          window.networkGraphInstance.resize();
+        }
+      } else {
+        graphSec.hidden = true;
+        cardsSec.hidden = false;
+        btnGraph.classList.remove("active");
+        btnCards.classList.add("active");
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const rawGraphData = {{ graph_json|safe if graph_json else '{"nodes":[],"links":[]}' }};
+      if (rawGraphData && rawGraphData.nodes && rawGraphData.nodes.length > 0) {
+        window.networkGraphInstance = new MeddeckGraph("main-gene-graph", {
+          height: 560,
+          showControls: true
+        });
+        window.networkGraphInstance.setData(rawGraphData);
+      }
+    });
+  </script>
 {% else %}
-<section class="panel empty-state"><div class="empty-icon">⌘</div><h2>Aún no hay conexiones públicas</h2><p>El grafo solo muestra personas adultas que dieron su consentimiento explícito y tienen genes candidatos asociados. Puedes habilitar o retirar tu consentimiento desde Mi perfil.</p><a href="{{ url_for('profile') }}">Revisar consentimiento del grafo</a></section>
+  <section class="panel empty-state">
+    <div class="empty-icon">⌘</div>
+    <h2>No public connections yet</h2>
+    <p>The graph only shows adults who gave explicit consent and have associated candidate genes. You can enable or withdraw your consent from My Profile.</p>
+    <a class="button secondary" href="{{ url_for('profile') }}">Review graph consent</a>
+  </section>
 {% endif %}
 {% endblock %}

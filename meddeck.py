@@ -19,24 +19,50 @@ BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB = BASE_DIR / "instance" / "meddeck.sqlite"
 DEFAULT_SECRET_FILE = BASE_DIR / "instance" / "flask-secret.key"
 HP_ID = re.compile(r"^HP:\d{7}$")
-ROLES = {"patient": "Paciente", "doctor": "Médico", "researcher": "Investigador"}
-SEX_OPTIONS = {"female": "Mujer", "male": "Hombre", "intersex": "Intersexual", "prefer_not": "Prefiero no decirlo"}
+ROLES = {"patient": "Patient", "doctor": "Doctor", "researcher": "Researcher"}
+SEX_OPTIONS = {"female": "Female", "male": "Male", "intersex": "Intersex", "prefer_not": "Prefer not to say"}
 
 SOURCES = [
-    ("HPO", "Fenotipos y relaciones enfermedad-fenotipo", "https://hpo.jax.org/"),
-    ("Orphanet", "Información y catálogo de enfermedades raras", "https://www.orpha.net/"),
-    ("OMIM", "Genes y fenotipos hereditarios; acceso sujeto a sus condiciones", "https://www.omim.org/"),
-    ("PubMed", "Literatura biomédica; las consultas abren resultados de NCBI", "https://pubmed.ncbi.nlm.nih.gov/"),
-    ("MONDO", "Identificadores de enfermedades", "https://mondo.monarchinitiative.org/"),
-    ("ClinVar", "Variantes genéticas y evidencias clínicas", "https://www.ncbi.nlm.nih.gov/clinvar/"),
-    ("ClinicalTrials.gov", "Ensayos clínicos registrados", "https://clinicaltrials.gov/"),
-    ("NORD", "Recursos y organizaciones de enfermedades raras", "https://rarediseases.org/"),
-    ("Global Genes", "Recursos comunitarios", "https://globalgenes.org/"),
-    ("EURORDIS", "Organizaciones y recursos europeos", "https://www.eurordis.org/"),
-    ("Rare Disease UK", "Apoyo e información", "https://www.rarediseaseuk.org/"),
-    ("Genetic Alliance", "Recursos de genética", "https://geneticalliance.org.uk/"),
-    ("NIH RePORTER", "Proyectos de investigación financiados por NIH", "https://reporter.nih.gov/"),
+    ("HPO", "Phenotypes and disease-phenotype relationships", "https://hpo.jax.org/"),
+    ("Orphanet", "Rare disease information and catalogue", "https://www.orpha.net/"),
+    ("OMIM", "Hereditary genes and phenotypes; access subject to their terms", "https://www.omim.org/"),
+    ("PubMed", "Biomedical literature; queries open NCBI results", "https://pubmed.ncbi.nlm.nih.gov/"),
+    ("MONDO", "Disease identifiers", "https://mondo.monarchinitiative.org/"),
+    ("ClinVar", "Genetic variants and clinical evidence", "https://www.ncbi.nlm.nih.gov/clinvar/"),
+    ("ClinicalTrials.gov", "Registered clinical trials", "https://clinicaltrials.gov/"),
+    ("NORD", "Rare disease resources and organizations", "https://rarediseases.org/"),
+    ("Global Genes", "Community resources", "https://globalgenes.org/"),
+    ("EURORDIS", "European organizations and resources", "https://www.eurordis.org/"),
+    ("Rare Disease UK", "Support and information", "https://www.rarediseaseuk.org/"),
+    ("Genetic Alliance", "Genetics resources", "https://geneticalliance.org.uk/"),
+    ("NIH RePORTER", "NIH-funded research projects", "https://reporter.nih.gov/"),
 ]
+
+
+def load_dotenv_file(path=None, override=False):
+    """Load key-value pairs from .env file into os.environ."""
+    if path is None:
+        path = BASE_DIR / ".env"
+    path = Path(path)
+    if not path.is_file():
+        return
+    try:
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip("'\"")
+                if k and v:
+                    if override or k not in os.environ or not os.environ[k]:
+                        os.environ[k] = v
+    except Exception:
+        pass
+
+
+load_dotenv_file()
 
 
 def load_or_create_secret(path):
@@ -174,7 +200,7 @@ def _parse_hpo_files(hpoa_path, obo_path, gene_path, hpoa_mtime, obo_mtime, gene
                     if match:
                         terms[term_id] += f" ({match.group(1)})"
         if "HP:0000001" not in terms:
-            raise ValueError("El archivo hp.obo no parece contener términos HPO.")
+            raise ValueError("The hp.obo file does not appear to contain HPO terms.")
     if hpoa_path and Path(hpoa_path).is_file():
         with open(hpoa_path, encoding="utf-8") as source:
             for line in source:
@@ -249,51 +275,139 @@ def score_candidate_genes(patient_hpo_ids, gene_annotations):
     return sorted(ranked, key=lambda item: (-item["score"], item["symbol"].casefold()))[:5]
 
 
-def extract_hpo(symptoms, terms):
-    """Use the official OpenAI API to map symptom text to existing HPO IDs."""
+# In-memory cache to avoid redundant requests for the same symptoms.
+_HPO_EXTRACTION_CACHE = {}
+
+def extract_hpo(symptoms, terms=None):
+    """Use OpenAI-compatible API (OpenAI, OpenRouter, Groq, Ollama) to map symptom text to existing HPO IDs with optimized token usage."""
+    if "OPENAI_API_KEY" not in os.environ:
+        load_dotenv_file()
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        return [], "La IA no está configurada. En PowerShell, ejecuta .\\run_meddeck.ps1 e introduce una clave nueva en el prompt oculto; no la pegues en el chat ni en el código."
-    if not terms:
-        return [], "Falta cargar la ontología HPO (hp.obo); no se pueden validar términos."
-    allowed_ids = set(terms)
+        return [], "AI is not configured. In PowerShell, run .\\run_meddeck.ps1 or set your key in the .env file; do not paste it into chat or source code."
+    if terms is None:
+        terms = {}
+    allowed_ids = set(terms) if terms else None
+
+    # Normalize and truncate text to reduce input tokens.
+    clean_symptoms = " ".join(str(symptoms or "").split())[:2500]
+    if not clean_symptoms:
+        return [], None
+
+    # Check the local cache (no tokens spent on repeated queries).
+    cache_key = clean_symptoms.lower()
+    if cache_key in _HPO_EXTRACTION_CACHE:
+        cached_results = _HPO_EXTRACTION_CACHE[cache_key]
+        if allowed_ids is not None:
+            return [p for p in cached_results if p["id"] in allowed_ids], None
+        return cached_results, None
+
+    # Auto-detect OpenRouter or custom endpoint
+    base_url = os.environ.get("OPENAI_BASE_URL", "").rstrip("/")
+    if not base_url:
+        if api_key.startswith("sk-or-v1-"):
+            base_url = "https://openrouter.ai/api/v1"
+        else:
+            base_url = "https://api.openai.com/v1"
+
+    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
     payload = {
-        "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-        "temperature": 0,
+        "model": model,
+        "temperature": 0.0,
+        "max_tokens": 350,
         "response_format": {"type": "json_object"},
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "Extrae únicamente fenotipos explícitamente descritos en el texto. "
-                    "No diagnostiques ni infieras. Responde JSON con la forma "
-                    '{"phenotypes":[{"hpo_id":"HP:0000000","evidence":"frase textual"}]}.'
+                    "Extract explicit HPO phenotypes from the text. "
+                    "Respond with JSON ONLY using this structure: "
+                    '{"phenotypes":[{"hpo_id":"HP:0001250","label":"name","evidence":"quote"}]}'
                 ),
             },
-            {"role": "user", "content": symptoms[:6000]},
+            {"role": "user", "content": clean_symptoms},
         ],
     }
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "http://127.0.0.1:5000",
+        "X-Title": "MEDDECK",
+    }
     req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
+        f"{base_url}/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
         headers=headers,
         method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read())
-        content = result["choices"][0]["message"]["content"]
-        extracted = json.loads(content).get("phenotypes", [])
+            raw_body = response.read()
+            result = json.loads(raw_body.decode("utf-8") if isinstance(raw_body, bytes) else raw_body)
+        raw_content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if not isinstance(raw_content, str):
+            raw_content = str(raw_content or "")
+
+        # Remove reasoning blocks (such as <think>...</think>)
+        raw_content = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL)
+
+        # Handle markdown blocks
+        if "```json" in raw_content:
+            raw_content = raw_content.split("```json", 1)[1].split("```", 1)[0]
+        elif "```" in raw_content:
+            raw_content = raw_content.split("```", 1)[1].split("```", 1)[0]
+
+        parsed_data = None
+        try:
+            parsed_data = json.loads(raw_content.strip())
+        except Exception:
+            # Fallback: search for JSON object or array in text
+            match_obj = re.search(r"(\{.*\}|\[.*\])", raw_content, re.DOTALL)
+            if match_obj:
+                try:
+                    parsed_data = json.loads(match_obj.group(0))
+                except Exception:
+                    pass
+
+        extracted = []
+        if isinstance(parsed_data, dict):
+            extracted = parsed_data.get("phenotypes", parsed_data.get("phenotype", []))
+            if not isinstance(extracted, list):
+                extracted = [extracted]
+        elif isinstance(parsed_data, list):
+            extracted = parsed_data
+
         found = []
         for item in extracted:
-            hpo_id = item.get("hpo_id", "")
-            if HP_ID.fullmatch(hpo_id) and hpo_id in allowed_ids:
-                found.append({"id": hpo_id, "label": terms[hpo_id], "evidence": str(item.get("evidence", ""))[:300]})
+            if not isinstance(item, dict):
+                continue
+            hpo_id = str(item.get("hpo_id") or item.get("id") or "").strip()
+            if HP_ID.fullmatch(hpo_id):
+                label = terms.get(hpo_id) if (terms and hpo_id in terms) else str(item.get("label") or item.get("name") or hpo_id)
+                evidence = str(item.get("evidence") or item.get("symptom") or "")[:300]
+                if allowed_ids is None or hpo_id in allowed_ids or not terms:
+                    found.append({"id": hpo_id, "label": label, "evidence": evidence})
+
+        # Regex fallback: extract any HP:\d{7} IDs present in text
+        if not found:
+            for hp_code in set(re.findall(r"HP:\d{7}", raw_content)):
+                label = terms.get(hp_code, hp_code) if terms else hp_code
+                if allowed_ids is None or hp_code in allowed_ids or not terms:
+                    found.append({"id": hp_code, "label": label, "evidence": "Extracted from symptom analysis"})
+
         unique = {item["id"]: item for item in found}
-        return list(unique.values()), None
+        result_list = list(unique.values())
+        if result_list:
+            _HPO_EXTRACTION_CACHE[cache_key] = result_list
+        return result_list, None
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            return [], "Authentication error (401): Your key is invalid or expired. Check your .env file."
+        elif exc.code == 429:
+            return [], "Rate limit or quota exceeded (429): Your account may not have enough credits or may have exceeded its request limit."
+        return [], f"API error ({exc.code} {exc.reason}). Check your configuration."
     except (urllib.error.URLError, TimeoutError, KeyError, ValueError, TypeError) as exc:
-        return [], f"No se pudo completar la extracción de fenotipos ({type(exc).__name__}). Inténtalo de nuevo."
+        return [], f"Phenotype extraction failed ({type(exc).__name__}). Please try again."
 
 
 def create_app(test_config=None):
@@ -318,7 +432,7 @@ def create_app(test_config=None):
             token = request.form.get("csrf_token", "")
             expected = session.get("csrf_token", "")
             if not expected or not secrets.compare_digest(token, expected):
-                abort(400, "Formulario vencido. Recarga la página e inténtalo de nuevo.")
+                abort(400, "Form expired. Reload the page and try again.")
 
     @app.context_processor
     def common_context():
@@ -338,7 +452,7 @@ def create_app(test_config=None):
 
     def require_login():
         if g.user is None:
-            flash("Inicia sesión para continuar.", "info")
+            flash("Please sign in to continue.", "info")
             return redirect(url_for("login"))
         return None
 
@@ -379,19 +493,19 @@ def create_app(test_config=None):
             except ValueError:
                 age = 0
             if not name or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-                flash("Escribe un nombre y un correo electrónico válido.", "error")
+                flash("Please enter a valid name and email address.", "error")
             elif len(password) < 10:
-                flash("La contraseña debe tener al menos 10 caracteres.", "error")
+                flash("Password must be at least 10 characters.", "error")
             elif not 18 <= age <= 120:
-                flash("Esta versión solo permite crear cuentas a personas adultas (18 años o más).", "error")
+                flash("This version only allows adults (18 or older) to create an account.", "error")
             elif sex not in SEX_OPTIONS or role not in ROLES:
-                flash("Selecciona opciones válidas de sexo y rol.", "error")
+                flash("Please select valid sex and role options.", "error")
             elif role == "patient" and not symptoms:
-                flash("Cuéntanos qué síntomas deseas compartir.", "error")
+                flash("Please tell us what symptoms you wish to share.", "error")
             elif role == "patient" and diagnosis and not condition:
-                flash("Escribe la condición ya diagnosticada.", "error")
+                flash("Please enter your diagnosed condition.", "error")
             elif role != "patient" and not condition:
-                flash("Indica la enfermedad de interés.", "error")
+                flash("Please indicate the disease of interest.", "error")
             else:
                 try:
                     with database(app.config["DATABASE"]) as db:
@@ -407,10 +521,10 @@ def create_app(test_config=None):
                             join_community(db, user_id, condition, "disease")
                     session.clear()
                     session["user_id"] = user_id
-                    flash("Tu perfil está listo. Puedes revisar o cambiar tus datos cuando quieras.", "success")
+                    flash("Your profile is ready. You can review or change your details anytime.", "success")
                     return redirect(url_for("dashboard"))
                 except sqlite3.IntegrityError:
-                    flash("Ya existe una cuenta con ese correo.", "error")
+                    flash("An account with that email already exists.", "error")
         return render_template("register.html", sex_options=SEX_OPTIONS)
 
     @app.route("/login", methods=["GET", "POST"])
@@ -424,7 +538,7 @@ def create_app(test_config=None):
                 session.clear()
                 session["user_id"] = user["id"]
                 return redirect(url_for("dashboard"))
-            flash("Correo o contraseña incorrectos.", "error")
+            flash("Incorrect email or password.", "error")
         return render_template("login.html")
 
     @app.post("/logout")
@@ -444,7 +558,7 @@ def create_app(test_config=None):
             consent_ai = request.form.get("consent_ai") == "yes"
             consent_gene_graph = request.form.get("consent_gene_graph") == "yes"
             if not name or (g.user["role"] == "patient" and not symptoms):
-                flash("Revisa el nombre y la información clínica requerida.", "error")
+                flash("Please check the name and required clinical information.", "error")
             else:
                 with database(app.config["DATABASE"]) as db:
                     db.execute(
@@ -454,7 +568,7 @@ def create_app(test_config=None):
                     )
                     if condition and (g.user["role"] != "patient" or g.user["diagnosed"]):
                         join_community(db, g.user["id"], condition, "disease")
-                flash("Perfil actualizado.", "success")
+                flash("Profile updated.", "success")
                 return redirect(url_for("dashboard"))
         return render_template("profile.html", user=g.user)
 
@@ -463,13 +577,13 @@ def create_app(test_config=None):
         denied = require_login()
         if denied:
             return denied
-        if request.form.get("confirmation") != "ELIMINAR":
-            flash("Escribe ELIMINAR para confirmar el borrado.", "error")
+        if request.form.get("confirmation") != "DELETE":
+            flash("Type DELETE to confirm deletion.", "error")
             return redirect(url_for("profile"))
         with database(app.config["DATABASE"]) as db:
             db.execute("DELETE FROM users WHERE id=?", (g.user["id"],))
         session.clear()
-        flash("La cuenta y los datos asociados fueron eliminados de esta instancia.", "success")
+        flash("Account and associated data have been deleted from this instance.", "success")
         return redirect(url_for("home"))
 
     @app.get("/dashboard")
@@ -498,12 +612,89 @@ def create_app(test_config=None):
                    JOIN memberships m ON m.community_id=c.id AND m.user_id=?
                    ORDER BY p.created_at DESC LIMIT 20""", (g.user["id"],)
             ).fetchall()
+
+        # Build personal patient network graph
+        nodes_map = {}
+        links_list = []
+        user_node_id = f"u_{g.user['id']}"
+        nodes_map[user_node_id] = {
+            "id": user_node_id,
+            "name": g.user["name"],
+            "type": "user",
+            "radius": 24,
+        }
+
+        for item in hpo_items:
+            hpo_node_id = f"h_{item['id']}"
+            nodes_map[hpo_node_id] = {
+                "id": hpo_node_id,
+                "name": item.get("label") or item["id"],
+                "type": "phenotype",
+                "hpo_id": item["id"],
+                "radius": 20,
+            }
+            links_list.append({
+                "source": user_node_id,
+                "target": hpo_node_id,
+                "type": "symptom",
+                "label": "presents",
+            })
+
+        for gc in gene_candidates:
+            gene_node_id = f"g_{gc['symbol']}"
+            nodes_map[gene_node_id] = {
+                "id": gene_node_id,
+                "name": gc["symbol"],
+                "type": "gene",
+                "radius": 26,
+            }
+            links_list.append({
+                "source": user_node_id,
+                "target": gene_node_id,
+                "type": "candidate",
+                "label": f"{gc.get('score', '')}%",
+            })
+            for mid in gc.get("matched", []):
+                hpo_mid = f"h_{mid}"
+                if hpo_mid in nodes_map:
+                    links_list.append({
+                        "source": gene_node_id,
+                        "target": hpo_mid,
+                        "type": "expresses",
+                        "label": "associated",
+                    })
+
+        for comm in communities:
+            comm_node_id = f"c_{comm['id']}"
+            nodes_map[comm_node_id] = {
+                "id": comm_node_id,
+                "name": comm["name"],
+                "type": "community",
+                "radius": 24,
+            }
+            gene_match = f"g_{comm['name']}"
+            if gene_match in nodes_map:
+                links_list.append({
+                    "source": comm_node_id,
+                    "target": gene_match,
+                    "type": "community_link",
+                })
+            else:
+                links_list.append({
+                    "source": user_node_id,
+                    "target": comm_node_id,
+                    "type": "member_of",
+                })
+
+        patient_graph_json = json.dumps({"nodes": list(nodes_map.values()), "links": links_list}, ensure_ascii=False)
+
         return render_template(
             "dashboard.html", user=g.user, hpo_items=hpo_items, candidates=candidates,
             gene_candidates=gene_candidates, gene_data_loaded=bool(gene_annotations),
             disease_phenotypes=disease_phenotypes, communities=communities, posts=post_rows,
             hpo_loaded=bool(terms and annotations),
             ai_configured=bool(os.environ.get("OPENAI_API_KEY")),
+            patient_graph_json=patient_graph_json,
             pubmed_url="https://pubmed.ncbi.nlm.nih.gov/?term=" + quote_plus(g.user["condition"] or ""),
         )
 
@@ -515,17 +706,14 @@ def create_app(test_config=None):
         if g.user["role"] != "patient":
             abort(403)
         terms, annotations, gene_annotations = load_hpo_data()
-        if not annotations or not terms:
-            flash("No se pudieron cargar los archivos HPO. Comprueba que phenotype.hpoa y hp.obo estén en Descargas o configura HPOA_PATH y HPO_OBO_PATH.", "error")
-            return redirect(url_for("dashboard"))
         if not g.user["consent_ai"]:
-            flash("No diste consentimiento para enviar síntomas al proveedor de IA. Actualiza tu perfil/consentimiento antes de analizar.", "error")
+            flash("You have not consented to send symptoms to the AI provider. Update your profile/consent before analyzing.", "error")
             return redirect(url_for("dashboard"))
         phenotypes, error = extract_hpo(g.user["symptoms"], terms)
         if error:
             flash(error, "error")
         elif not phenotypes:
-            flash("No se encontraron términos HPO validados en el texto; puedes editar los síntomas e intentarlo de nuevo.", "info")
+            flash("No validated HPO terms were found in the text; you can edit your symptoms and try again.", "info")
         else:
             gene_candidates = score_candidate_genes(
                 [item["id"] for item in phenotypes], gene_annotations
@@ -540,11 +728,11 @@ def create_app(test_config=None):
                     join_community(db, g.user["id"], candidate["symbol"], "candidate_gene")
             if gene_annotations:
                 flash(
-                    f"Se encontraron {len(phenotypes)} términos HPO y {len(gene_candidates)} genes candidatos asociados. No significa que tengas variantes ni genes afectados.",
+                    f"Found {len(phenotypes)} HPO terms and {len(gene_candidates)} associated candidate genes. This does not mean you have variants or affected genes.",
                     "success",
                 )
             else:
-                flash("Se encontraron términos HPO, pero falta genes_to_phenotype.txt para contrastar genes candidatos.", "info")
+                flash(f"Identified {len(phenotypes)} HPO phenotypes. (Note: genes_to_phenotype.txt in Downloads is required to cross-reference associated genes).", "info")
         return redirect(url_for("dashboard"))
 
     @app.post("/join")
@@ -556,11 +744,11 @@ def create_app(test_config=None):
         _, annotations, _ = load_hpo_data()
         disease = next((key for key in annotations if key[0] == disease_id), None)
         if not disease:
-            flash("No se encontró esa enfermedad en los datos HPO cargados.", "error")
+            flash("Disease not found in the loaded HPO data.", "error")
         else:
             with database(app.config["DATABASE"]) as db:
                 join_community(db, g.user["id"], disease[1], "disease")
-            flash(f"Te uniste a la comunidad de {disease[1]}.", "success")
+            flash(f"You joined the {disease[1]} community.", "success")
         return redirect(url_for("dashboard"))
 
     @app.post("/mark-diagnosed")
@@ -573,7 +761,7 @@ def create_app(test_config=None):
         genes = request.form.get("genes", "").strip()[:1000]
         symptoms = request.form.get("symptoms", "").strip()[:6000]
         if not genes or not symptoms:
-            flash("Completa los genes afectados y tus síntomas actuales.", "error")
+            flash("Please complete the affected genes and your current symptoms.", "error")
         else:
             gene_names = [item.strip() for item in re.split(r"[,;\n]", genes) if item.strip()]
             with database(app.config["DATABASE"]) as db:
@@ -583,7 +771,7 @@ def create_app(test_config=None):
                     join_community(db, g.user["id"], gene, "gene")
                 if g.user["condition"]:
                     join_community(db, g.user["id"], g.user["condition"], "disease")
-            flash("Perfil actualizado; se crearon o actualizaron comunidades por gen.", "success")
+            flash("Profile updated; communities by gene were created or updated.", "success")
         return redirect(url_for("dashboard"))
 
     @app.route("/community/<int:community_id>", methods=["GET", "POST"])
@@ -591,6 +779,7 @@ def create_app(test_config=None):
         denied = require_login()
         if denied:
             return denied
+        terms, _, _ = load_hpo_data()
         with database(app.config["DATABASE"]) as db:
             member = db.execute("SELECT 1 FROM memberships WHERE user_id=? AND community_id=?",
                                 (g.user["id"], community_id)).fetchone()
@@ -599,7 +788,7 @@ def create_app(test_config=None):
             if request.method == "POST":
                 body = request.form.get("body", "").strip()[:2000]
                 if not body:
-                    flash("El mensaje no puede estar vacío.", "error")
+                    flash("Message cannot be empty.", "error")
                 else:
                     db.execute("INSERT INTO posts(community_id,user_id,body) VALUES (?,?,?)",
                                (community_id, g.user["id"], body))
@@ -609,7 +798,75 @@ def create_app(test_config=None):
                 """SELECT p.body,p.created_at,u.name FROM posts p JOIN users u ON u.id=p.user_id
                    WHERE p.community_id=? ORDER BY p.created_at DESC LIMIT 100""", (community_id,)
             ).fetchall()
-        return render_template("community.html", community=community_info, posts=posts)
+            members = db.execute(
+                """SELECT u.id, u.name, u.role, u.consent_gene_graph, u.hpo_json, u.gene_candidates_json
+                   FROM users u JOIN memberships m ON m.user_id=u.id
+                   WHERE m.community_id=?""", (community_id,)
+            ).fetchall()
+
+        # Build community subgraph
+        nodes_map = {}
+        links_list = []
+        comm_node_id = f"c_{community_id}"
+        nodes_map[comm_node_id] = {
+            "id": comm_node_id,
+            "name": community_info["name"],
+            "type": "community",
+            "radius": 30,
+        }
+
+        # If it's a gene community, add gene node
+        if community_info["basis"] in ("gene", "candidate_gene"):
+            gene_node_id = f"g_{community_info['name']}"
+            nodes_map[gene_node_id] = {
+                "id": gene_node_id,
+                "name": community_info["name"],
+                "type": "gene",
+                "radius": 26,
+            }
+            links_list.append({"source": comm_node_id, "target": gene_node_id, "type": "basis"})
+
+        for m_row in members:
+            # Show real name if consent given or if viewing self
+            is_self = m_row["id"] == g.user["id"]
+            display_name = m_row["name"] if (m_row["consent_gene_graph"] or is_self) else f"Participant #{m_row['id']}"
+            m_node_id = f"u_{m_row['id']}"
+            nodes_map[m_node_id] = {
+                "id": m_node_id,
+                "name": display_name,
+                "type": "user",
+                "radius": 22,
+            }
+            links_list.append({"source": m_node_id, "target": comm_node_id, "type": "member", "label": "member"})
+
+            # If user has consent, connect their HPO phenotypes
+            if m_row["consent_gene_graph"] or is_self:
+                try:
+                    for hpo_item in json.loads(m_row["hpo_json"]):
+                        hpo_id = hpo_item.get("id")
+                        if hpo_id:
+                            hpo_node_id = f"h_{hpo_id}"
+                            if hpo_node_id not in nodes_map:
+                                nodes_map[hpo_node_id] = {
+                                    "id": hpo_node_id,
+                                    "name": terms.get(hpo_id, hpo_item.get("label", hpo_id)),
+                                    "type": "phenotype",
+                                    "hpo_id": hpo_id,
+                                    "radius": 18,
+                                }
+                            links_list.append({"source": m_node_id, "target": hpo_node_id, "type": "phenotype_link"})
+                except Exception:
+                    pass
+
+        community_graph_json = json.dumps({"nodes": list(nodes_map.values()), "links": links_list}, ensure_ascii=False)
+
+        return render_template(
+            "community.html",
+            community=community_info,
+            posts=posts,
+            members=members,
+            community_graph_json=community_graph_json,
+        )
 
     @app.post("/community/<int:community_id>/leave")
     def leave_community(community_id):
@@ -625,33 +882,159 @@ def create_app(test_config=None):
     def atlas():
         terms, annotations, _ = load_hpo_data()
         edges = []
+        nodes_map = {}
+        links_list = []
         for (disease_id, disease_name), phenotypes in list(annotations.items())[:150]:
+            d_node_id = f"d_{disease_id}"
+            nodes_map[d_node_id] = {
+                "id": d_node_id,
+                "name": disease_name,
+                "type": "disease",
+                "radius": 24,
+            }
             for phenotype_id in sorted(phenotypes)[:10]:
+                p_label = terms.get(phenotype_id, phenotype_id)
                 edges.append({"disease": disease_name, "disease_id": disease_id,
-                              "phenotype": terms.get(phenotype_id, phenotype_id), "phenotype_id": phenotype_id})
-        return render_template("atlas.html", edges=edges, sources=SOURCES, data_loaded=bool(annotations))
+                              "phenotype": p_label, "phenotype_id": phenotype_id})
+                p_node_id = f"h_{phenotype_id}"
+                if p_node_id not in nodes_map:
+                    nodes_map[p_node_id] = {
+                        "id": p_node_id,
+                        "name": p_label,
+                        "type": "phenotype",
+                        "hpo_id": phenotype_id,
+                        "radius": 18,
+                    }
+                links_list.append({"source": d_node_id, "target": p_node_id, "type": "disease_phenotype"})
+
+        atlas_graph_json = json.dumps({"nodes": list(nodes_map.values()), "links": links_list}, ensure_ascii=False)
+        return render_template(
+            "atlas.html",
+            edges=edges,
+            sources=SOURCES,
+            data_loaded=bool(annotations),
+            atlas_graph_json=atlas_graph_json,
+        )
 
     @app.get("/gene-graph")
     def gene_graph():
         denied = require_login()
         if denied:
             return denied
+        terms, _, _ = load_hpo_data()
         with database(app.config["DATABASE"]) as db:
             rows = db.execute(
-                """SELECT id, name, gene_candidates_json FROM users
+                """SELECT id, name, gene_candidates_json, hpo_json FROM users
                    WHERE consent_gene_graph=1 AND role='patient' ORDER BY name COLLATE NOCASE"""
             ).fetchall()
+            communities = db.execute("SELECT * FROM communities").fetchall()
+
         grouped = defaultdict(list)
+        nodes_map = {}
+        links_list = []
+
+        # Add community nodes
+        for comm in communities:
+            comm_node_id = f"c_{comm['id']}"
+            nodes_map[comm_node_id] = {
+                "id": comm_node_id,
+                "name": comm["name"],
+                "type": "community",
+                "basis": comm["basis"],
+                "radius": 24,
+            }
+
+        total_participants = len(rows)
+        phenotypes_set = set()
+
         for row in rows:
+            u_node_id = f"u_{row['id']}"
+            nodes_map[u_node_id] = {
+                "id": u_node_id,
+                "name": row["name"],
+                "type": "user",
+                "radius": 22,
+            }
+
+            # Link patient HPO phenotypes
+            try:
+                hpos = json.loads(row["hpo_json"])
+                for hp in hpos:
+                    hp_id = hp.get("id")
+                    if hp_id:
+                        phenotypes_set.add(hp_id)
+                        hp_node_id = f"h_{hp_id}"
+                        if hp_node_id not in nodes_map:
+                            nodes_map[hp_node_id] = {
+                                "id": hp_node_id,
+                                "name": terms.get(hp_id, hp.get("label", hp_id)),
+                                "type": "phenotype",
+                                "hpo_id": hp_id,
+                                "radius": 18,
+                            }
+                        links_list.append({
+                            "source": u_node_id,
+                            "target": hp_node_id,
+                            "type": "phenotype",
+                        })
+            except Exception:
+                pass
+
+            # Link patient candidate genes
             for candidate in json.loads(row["gene_candidates_json"]):
                 symbol = candidate.get("symbol", "")
                 if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,29}", symbol):
                     grouped[symbol].append({"name": row["name"]})
+                    g_node_id = f"g_{symbol}"
+                    if g_node_id not in nodes_map:
+                        nodes_map[g_node_id] = {
+                            "id": g_node_id,
+                            "name": symbol,
+                            "type": "gene",
+                            "radius": 26,
+                        }
+                    links_list.append({
+                        "source": u_node_id,
+                        "target": g_node_id,
+                        "type": "candidate_gene",
+                        "label": f"{candidate.get('score', '')}%",
+                    })
+                    # Link gene to matched HPO phenotypes
+                    for mid in candidate.get("matched", []):
+                        hp_mid = f"h_{mid}"
+                        if hp_mid in nodes_map:
+                            links_list.append({
+                                "source": g_node_id,
+                                "target": hp_mid,
+                                "type": "gene_phenotype",
+                            })
+
+        # Connect communities to corresponding genes
+        for comm in communities:
+            comm_node_id = f"c_{comm['id']}"
+            g_target = f"g_{comm['name']}"
+            if g_target in nodes_map:
+                links_list.append({
+                    "source": comm_node_id,
+                    "target": g_target,
+                    "type": "community_gene",
+                })
+
         genes = [
             {"symbol": symbol, "members": members}
             for symbol, members in sorted(grouped.items(), key=lambda item: item[0].casefold())
         ]
-        return render_template("gene_graph.html", genes=genes)
+
+        graph_json = json.dumps({"nodes": list(nodes_map.values()), "links": links_list}, ensure_ascii=False)
+
+        stats = {
+            "genes_count": len(genes),
+            "participants_count": total_participants,
+            "phenotypes_count": len(phenotypes_set),
+            "communities_count": len(communities),
+        }
+
+        return render_template("gene_graph.html", genes=genes, graph_json=graph_json, stats=stats)
 
     @app.post("/join-candidate-gene")
     def join_candidate_gene():
@@ -660,12 +1043,12 @@ def create_app(test_config=None):
             return denied
         symbol = request.form.get("gene", "").strip()
         _, _, gene_annotations = load_hpo_data()
-        if symbol not in gene_annotations:
-            flash("No se encontró ese gen en las asociaciones HPO cargadas.", "error")
+        if gene_annotations and symbol not in gene_annotations:
+            flash("That gene was not found in the loaded HPO associations.", "error")
         else:
             with database(app.config["DATABASE"]) as db:
                 join_community(db, g.user["id"], symbol, "candidate_gene")
-            flash(f"Te uniste a la comunidad de discusión para personas interesadas en el gen {symbol}.", "success")
+            flash(f"You joined the discussion community for people interested in {symbol}.", "success")
         return redirect(url_for("dashboard"))
 
     @app.get("/sources")

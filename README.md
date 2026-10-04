@@ -1,8 +1,8 @@
 # MEDDECK
 
-Prototipo web local en Python para conectar personas, explorar relaciones enfermedad-fenotipo y compartir fuentes biomédicas. Está construido con Flask y SQLite. **No es un sistema de diagnóstico ni está listo para alojar datos de salud reales en un servidor público.**
+A local Python web prototype for connecting people, exploring disease-phenotype relationships, and sharing biomedical resources. Built with Flask and SQLite. **This is not a diagnostic system and is not ready to host real health data on a public server.**
 
-## Ejecutar en Windows
+## Run on Windows
 
 ```powershell
 python -m venv .venv
@@ -11,42 +11,42 @@ python -m pip install -r requirements.txt
 python meddeck.py
 ```
 
-Abre http://127.0.0.1:5000. La base de datos se crea en `instance\meddeck.sqlite`; la clave de sesión local se crea una sola vez en `instance\flask-secret.key` y se conserva entre reinicios para que no expiren formularios y sesiones. No borres ese archivo mientras uses la app. En un entorno desplegado, define `MEDDECK_SECRET_KEY` como un secreto estable en el proveedor y no uses `MEDDECK_DEBUG=1`.
+Open http://127.0.0.1:5000. The database is created at `instance\meddeck.sqlite`; the local session key is created once at `instance\flask-secret.key` and retained across restarts so forms and sessions remain valid. Do not delete that file while using the app. In a deployed environment, set `MEDDECK_SECRET_KEY` to a stable secret in your hosting provider and do not enable `MEDDECK_DEBUG=1`.
 
-## Datos HPO y análisis de síntomas
+## HPO data and symptom analysis
 
-El atlas no incluye asociaciones médicas ficticias. MEDDECK detecta en Descargas `hp.obo`, `phenotype.hpoa` y el archivo oficial [genes_to_phenotype.txt](https://github.com/obophenotype/human-phenotype-ontology/releases/download/v2026-09-01/genes_to_phenotype.txt). Si mueves o renombras estos ficheros, indica las rutas con `HPO_OBO_PATH`, `HPOA_PATH` y `HPO_GENE_PATH`. Revisa fecha, atribución y términos de uso de los archivos publicados por [HPO](https://github.com/obophenotype/human-phenotype-ontology/releases).
+The atlas does not include fabricated medical associations. MEDDECK looks for `hp.obo`, `phenotype.hpoa`, and the official [genes_to_phenotype.txt](https://github.com/obophenotype/human-phenotype-ontology/releases/download/v2026-09-01/genes_to_phenotype.txt) in your Downloads folder. If you move or rename these files, set their paths with `HPO_OBO_PATH`, `HPOA_PATH`, and `HPO_GENE_PATH`. Check the date, attribution, and terms of use for files published by [HPO](https://github.com/obophenotype/human-phenotype-ontology/releases).
 
 ```powershell
 .\run_meddeck.ps1
 ```
 
-El lanzador pide la clave con entrada oculta y la entrega al proceso de MEDDECK sin escribirla en código, `.env`, historial del terminal ni base de datos. El valor se elimina del entorno al salir del servidor. Por defecto usa `gpt-4o-mini` y el puerto `5009`. Si PowerShell bloquea la ejecución del script, ejecuta primero `Set-ExecutionPolicy -Scope Process Bypass` solo en esa ventana y vuelve a ejecutar el lanzador. Detén el servidor anterior con `Ctrl+C` y arráncalo con este script; cambiar variables en otra terminal no modifica un proceso Flask que ya está corriendo.
+The launcher prompts for the key using hidden input and passes it to MEDDECK without writing it to source code, `.env`, terminal history, or the database. By default, the launcher uses the model configured in `.env` or `llama3.2`, and port `5000`. If PowerShell blocks script execution, run `Set-ExecutionPolicy -Scope Process Bypass` in that window, then run the launcher again. Stop any existing server with `Ctrl+C` and restart it with this script; changing variables in another terminal does not affect an already-running Flask process.
 
-Si una clave se compartió en el chat, revócala desde la plataforma de OpenAI y crea otra antes de usar el lanzador. El análisis usa exclusivamente la API oficial de OpenAI.
+If a key was shared in chat, revoke it through your provider and create a new one before using the launcher. MEDDECK uses an OpenAI-compatible API; `OPENAI_BASE_URL` can point to a compatible provider.
 
-OpenAI se usa solo cuando la persona marcó consentimiento; se envía el texto de síntomas, no nombre ni correo. El uso de la API puede tener costo y depende de tu cuenta, límites y políticas de OpenAI. Sin clave, archivos de ontología o consentimiento, no se procesan síntomas. Los identificadores propuestos se validan contra la ontología local. Luego los fenotipos HPO se comparan con genes asociados por HPO; el resultado son **genes candidatos relacionados con fenotipos**, no una inferencia de genes afectados ni de variantes presentes. Los grupos asociados se crean como espacios de conversación. La similitud de enfermedad no es probabilidad, diagnóstico ni consejo médico. Toda salida requiere revisión clínica.
+The AI provider is used only when the person has given consent; only symptom text is sent, not name or email. API usage may incur costs and is subject to the provider's account, rate limits, and policies. Symptoms are not processed without a key, ontology files, and consent. Proposed identifiers are validated against the local ontology. The patient report lists each identified HPO term with its identifier, label, and supporting evidence. HPO phenotypes are then compared with HPO-associated genes; the results are **candidate genes associated with phenotypes**, not an inference that a patient has affected genes or variants. Related groups are created as conversation spaces. Disease similarity is not a probability, diagnosis, or medical advice. All output requires clinical review.
 
-El grafo global de genes solo muestra por nombre a pacientes que activaron el consentimiento específico desde registro o perfil; muestra el nombre y sus genes candidatos, nunca el correo ni síntomas. Cualquier usuario con cuenta puede consultar el grafo y unirse a comunidades de conversación. El consentimiento se puede retirar desde Mi perfil.
+The global gene graph shows a patient's name and candidate genes only if they have given the specific consent in registration or their profile; it never shows their email or symptoms. Any registered user can view the graph and join conversation communities. Consent can be withdrawn from My Profile.
 
-HPOA puede incluir registros identificados por OMIM u otras fuentes; no se accede a una API de OMIM ni se redistribuyen sus datos. El acceso a OMIM puede requerir autorización y está sujeto a sus condiciones. PubMed, Orphanet, MONDO, ClinVar, ClinicalTrials.gov y recursos de organizaciones se ofrecen como enlaces a las fuentes originales. Esta versión no extrae automáticamente sus catálogos.
+HPOA may include records identified by OMIM or other sources; MEDDECK does not access an OMIM API or redistribute its data. OMIM access may require authorization and is subject to its terms. PubMed, Orphanet, MONDO, ClinVar, ClinicalTrials.gov, and organization resources are provided as links to their original sources. This version does not automatically retrieve their catalogs.
 
-## Lo que ya permite probar
+## Features
 
-- Registro e inicio de sesión con contraseñas con hash; roles paciente, médico e investigador.
-- Formularios adaptados al rol, consentimiento revocable para análisis con IA y para aparecer por nombre en el grafo, edición y borrado de perfil, y protección CSRF.
-- Comunidades por condición para personas diagnosticadas/profesionales; comunidades por gen al actualizar el diagnóstico; mensajes y opción de salir.
-- Extracción opcional de HPO y ordenamiento ponderado de coincidencias a partir de datos HPO configurados.
-- Genes candidatos basados en asociaciones HPO oficiales, comunidades de discusión y grafo global por consentimiento.
-- Atlas de relaciones enfermedad-fenotipo y directorio de fuentes externas.
+- Account registration and sign-in with hashed passwords; patient, doctor, and researcher roles.
+- Role-specific forms, revocable consent for AI analysis and name display in the graph, profile editing and deletion, and CSRF protection.
+- Condition-based communities for people with a diagnosis and professionals; gene-based communities after diagnosis updates; messaging and the ability to leave.
+- Optional HPO term extraction and weighted matching based on configured HPO data.
+- Candidate genes based on official HPO associations, discussion communities, and a consent-based global graph.
+- A disease-phenotype atlas and directory of external sources.
 
-Esta demostración limita el registro a mayores de edad; todavía no tiene consentimiento de tutores ni un flujo para cuentas de menores.
+This demonstration limits registration to adults; it does not yet support guardian consent or accounts for minors.
 
-## Antes de un despliegue público
+## Before public deployment
 
-Hace falta un despliegue administrado (ningún proveedor/credencial de alojamiento fue indicado), HTTPS, `MEDDECK_SECRET_KEY` estable y secreto, base de datos con controles de acceso y cifrado, copias de seguridad y retención/borrado, moderación y herramientas de denuncia, proceso de consentimiento y privacidad conforme a la jurisdicción, evaluación clínica del algoritmo, accesibilidad y pruebas de seguridad. La base SQLite y este prototipo no son adecuados para alojar datos de salud reales expuestos a internet. No publiques el servidor de desarrollo de Flask ni guardes claves de proveedor en el código.
+A managed deployment (no hosting provider or credentials were specified), HTTPS, a stable secret `MEDDECK_SECRET_KEY`, a database with access controls and encryption, backups and retention/deletion policies, moderation and reporting tools, consent and privacy procedures appropriate to the jurisdiction, clinical evaluation of the algorithm, accessibility, and security testing are still needed. SQLite and this prototype are not suitable for hosting real health data exposed to the internet. Do not publish Flask's development server or store provider keys in source code.
 
-## Pruebas
+## Tests
 
 ```powershell
 python -m unittest discover -s tests -v
