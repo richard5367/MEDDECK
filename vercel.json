@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "meddeck.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{.venv/**,instance/**,tests/**,__pycache__/**,terminal,run_meddeck.ps1,.env,.env.example}"
+    }
+  }
+}
