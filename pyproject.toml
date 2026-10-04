@@ -1,2 +1,17 @@
+[project]
+name = "meddeck"
+version = "1.0.0"
+description = "MEDDECK: patient-facing rare disease phenotype, gene and community platform"
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.0,<4.0",
+]
+
+# This is an application, not a distributable package: there is no importable
+# package layout to build and install. Without this, uv tries to build and
+# install the project itself during "uv sync" and fails.
+[tool.uv]
+package = false
+
 [tool.vercel]
 entrypoint = "app:app"
