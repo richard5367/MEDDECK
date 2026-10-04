@@ -97,6 +97,70 @@ class HpoTests(unittest.TestCase):
         self.assertEqual(request.get_header("Authorization"), "Bearer test-key")
         self.assertEqual(json.loads(request.data)["model"], "gpt-4o-mini")
 
+    def test_extract_hpo_uses_anthropic_messages_api_for_claude_keys(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps({
+                    "content": [
+                        {"type": "thinking", "thinking": "ignored"},
+                        {"type": "text", "text": json.dumps({
+                            "phenotypes": [{"hpo_id": "HP:0000001", "evidence": "seizures"}]
+                        })},
+                    ],
+                }).encode()
+
+        with patch.dict(os.environ, {
+            "OPENAI_API_KEY": "sk-ant-test",
+        }, clear=True), patch("meddeck.urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            results, error = extract_hpo("seizures", {"HP:0000001": "Test phenotype"})
+
+        self.assertIsNone(error)
+        self.assertEqual(results[0]["id"], "HP:0000001")
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://api.anthropic.com/v1/messages")
+        # Claude does not accept Authorization: Bearer; it requires x-api-key.
+        self.assertEqual(request.get_header("X-api-key"), "sk-ant-test")
+        self.assertIsNone(request.get_header("Authorization"))
+        self.assertEqual(request.get_header("Anthropic-version"), "2023-06-01")
+
+        payload = json.loads(request.data)
+        self.assertEqual(payload["model"], "claude-haiku-4-5")
+        # The system prompt is a top-level field, not a message role.
+        self.assertIn("HPO phenotypes", payload["system"])
+        self.assertNotIn("response_format", payload)
+        self.assertEqual(payload["max_tokens"], 350)
+        self.assertEqual([m["role"] for m in payload["messages"]], ["user"])
+
+    def test_extract_hpo_honours_anthropic_model_override(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def read(self):
+                return json.dumps({"content": [{"type": "text", "text": "{}"}]}).encode()
+
+        with patch.dict(os.environ, {
+            "OPENAI_API_KEY": "sk-ant-test",
+            "ANTHROPIC_MODEL": "claude-sonnet-5-5",
+            "ANTHROPIC_BASE_URL": "https://proxy.example.com",
+        }, clear=True), patch("meddeck.urllib.request.urlopen", return_value=FakeResponse()) as urlopen:
+            # Distinct wording: extract_hpo memoises results in a module-level cache.
+            extract_hpo("progressive muscle weakness")
+
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "https://proxy.example.com/v1/messages")
+        self.assertEqual(json.loads(request.data)["model"], "claude-sonnet-5-5")
+
     def test_extract_hpo_requires_openai_api_key(self):
         with patch.dict(os.environ, {"OPENAI_API_KEY": ""}):
             results, error = extract_hpo("reported symptom", {"HP:0000001": "Test phenotype"})

@@ -322,8 +322,30 @@ def score_candidate_genes(patient_hpo_ids, gene_annotations):
 # In-memory cache to avoid redundant requests for the same symptoms.
 _HPO_EXTRACTION_CACHE = {}
 
+HPO_EXTRACTION_PROMPT = (
+    "Extract explicit HPO phenotypes from the text. "
+    "Respond with JSON ONLY using this structure: "
+    '{"phenotypes":[{"hpo_id":"HP:0001250","label":"name","evidence":"quote"}]}'
+)
+
+def _error_detail(exc):
+    """Best-effort extraction of the provider error message from an HTTPError body."""
+    try:
+        body = exc.read().decode("utf-8", "replace")
+        message = (json.loads(body).get("error") or {}).get("message")
+    except Exception:
+        return ""
+    return str(message or "").strip()
+
+
 def extract_hpo(symptoms, terms=None):
-    """Use OpenAI-compatible API (OpenAI, OpenRouter, Groq, Ollama) to map symptom text to existing HPO IDs with optimized token usage."""
+    """Map symptom text to existing HPO IDs with the configured AI provider.
+
+    Two request shapes are supported, chosen from the key prefix: the OpenAI
+    chat-completions API (OpenAI, OpenRouter, Groq, Ollama) and the Anthropic
+    Messages API (Claude). They differ in endpoint, auth header, where the system
+    prompt goes and how the reply is read back, so they are built separately.
+    """
     if "OPENAI_API_KEY" not in os.environ:
         load_dotenv_file()
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -346,40 +368,59 @@ def extract_hpo(symptoms, terms=None):
             return [p for p in cached_results if p["id"] in allowed_ids], None
         return cached_results, None
 
-    # Auto-detect OpenRouter or custom endpoint
-    base_url = os.environ.get("OPENAI_BASE_URL", "").rstrip("/")
-    if not base_url:
-        if api_key.startswith("sk-or-v1-"):
-            base_url = "https://openrouter.ai/api/v1"
-        else:
-            base_url = "https://api.openai.com/v1"
+    # Anthropic keys are not OpenAI-compatible, so they need their own endpoint,
+    # auth header, system-prompt placement and reply shape.
+    is_anthropic = api_key.startswith("sk-ant-")
 
-    model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-    payload = {
-        "model": model,
-        "temperature": 0.0,
-        "max_tokens": 350,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Extract explicit HPO phenotypes from the text. "
-                    "Respond with JSON ONLY using this structure: "
-                    '{"phenotypes":[{"hpo_id":"HP:0001250","label":"name","evidence":"quote"}]}'
-                ),
-            },
-            {"role": "user", "content": clean_symptoms},
-        ],
-    }
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "http://127.0.0.1:5000",
-        "X-Title": "MEDDECK",
-    }
+    if is_anthropic:
+        base_url = os.environ.get("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
+        model = os.environ.get("ANTHROPIC_MODEL", os.environ.get("OPENAI_MODEL", "claude-haiku-4-5"))
+        payload = {
+            "model": model,
+            "temperature": 0.0,
+            "max_tokens": 350,
+            "system": HPO_EXTRACTION_PROMPT,
+            "messages": [{"role": "user", "content": clean_symptoms}],
+        }
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        endpoint = f"{base_url}/v1/messages"
+    else:
+        # Auto-detect OpenRouter or custom endpoint
+        base_url = os.environ.get("OPENAI_BASE_URL", "").rstrip("/")
+        if not base_url:
+            if api_key.startswith("sk-or-v1-"):
+                base_url = "https://openrouter.ai/api/v1"
+            else:
+                base_url = "https://api.openai.com/v1"
+
+        model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+        payload = {
+            "model": model,
+            "temperature": 0.0,
+            "max_tokens": 350,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {
+                    "role": "system",
+                    "content": HPO_EXTRACTION_PROMPT,
+                },
+                {"role": "user", "content": clean_symptoms},
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://127.0.0.1:5000",
+            "X-Title": "MEDDECK",
+        }
+        endpoint = f"{base_url}/chat/completions"
+
     req = urllib.request.Request(
-        f"{base_url}/chat/completions",
+        endpoint,
         data=json.dumps(payload).encode("utf-8"),
         headers=headers,
         method="POST",
@@ -388,7 +429,15 @@ def extract_hpo(symptoms, terms=None):
         with urllib.request.urlopen(req, timeout=30) as response:
             raw_body = response.read()
             result = json.loads(raw_body.decode("utf-8") if isinstance(raw_body, bytes) else raw_body)
-        raw_content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        if is_anthropic:
+            # Anthropic replies with a list of content blocks instead of choices.
+            raw_content = "".join(
+                block.get("text", "")
+                for block in (result.get("content") or [])
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+        else:
+            raw_content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         if not isinstance(raw_content, str):
             raw_content = str(raw_content or "")
 
@@ -445,12 +494,32 @@ def extract_hpo(symptoms, terms=None):
             _HPO_EXTRACTION_CACHE[cache_key] = result_list
         return result_list, None
     except urllib.error.HTTPError as exc:
+        detail = _error_detail(exc)
         if exc.code == 401:
-            return [], "Authentication error (401): Your key is invalid or expired. Check your .env file."
+            return [],
+            (
+                "Authentication error (401): your key is invalid, expired or lacks access. "
+                "For Claude, also check that ANTHROPIC_MODEL names a model your account can use."
+            )
+        elif exc.code == 400 and is_anthropic and "model" in detail.lower():
+            return [],
+            (
+                f"The model {model!r} was rejected by the Claude API. Set ANTHROPIC_MODEL "
+                "to a model your key has access to, for example claude-haiku-4-5."
+            )
         elif exc.code == 429:
-            return [], "Rate limit or quota exceeded (429): Your account may not have enough credits or may have exceeded its request limit."
-        return [], f"API error ({exc.code} {exc.reason}). Check your configuration."
+            return [],
+            (
+                "Rate limit or quota exceeded (429): Your account may not have enough credits or may have exceeded its request limit."
+            )
+        return [], f"API error ({exc.code} {exc.reason}). {detail}".strip()
     except (urllib.error.URLError, TimeoutError, KeyError, ValueError, TypeError) as exc:
+        if is_anthropic:
+            return [],
+            (
+                f"Could not reach the Claude API ({type(exc).__name__}). "
+                "Check ANTHROPIC_BASE_URL if you changed it from the default."
+            )
         return [], f"Phenotype extraction failed ({type(exc).__name__}). Please try again."
 
 
