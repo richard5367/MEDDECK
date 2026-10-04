@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Mi espacio | MEDDECK{% endblock %}
+{% block content %}
+<section class="welcome-row"><div><p class="eyebrow">{{ roles[user.role] }} · MI ESPACIO</p><h1>Hola, {{ user.name }}.</h1><p class="muted">Este espacio es privado. Tu correo y tus datos de perfil no aparecen a otros miembros.</p></div><a class="button secondary" href="{{ url_for('profile') }}">Editar perfil</a></section>
+{% if user.role == "patient" %}
+  <section class="panel">
+    <div class="panel-heading"><div><p class="eyebrow">TUS SÍNTOMAS</p><h2>Fenotipos HPO</h2></div><form method="post" action="{{ url_for('analyze') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button primary" type="submit">Analizar con HPO</button></form></div>
+    {% if hpo_items %}<ul class="phenotype-list">{% for item in hpo_items %}<li><strong>{{ item.label }}</strong> <code>{{ item.id }}</code><span>{{ item.evidence }}</span></li>{% endfor %}</ul>
+    {% else %}<p class="muted">Aún no hay fenotipos analizados. {% if not hpo_loaded %}No se encontraron los archivos HPO. Coloca phenotype.hpoa y hp.obo en Descargas y reinicia el servidor.{% elif not ai_configured %}Falta configurar OpenAI. Cierra MEDDECK y vuelve a iniciarlo con run_meddeck.ps1.{% elif not user.consent_ai %}OpenAI está configurado. Para analizar tus síntomas, primero activa el consentimiento para IA desde tu perfil.{% else %}OpenAI y los datos HPO están listos. Puedes iniciar el análisis cuando quieras.{% endif %}</p>{% endif %}
+    {% if candidates %}
+      <div class="notice"><strong>Coincidencias de fenotipos, no probabilidades</strong><p>Este porcentaje compara términos HPO compartidos con los datos cargados. No estima la posibilidad de tener una enfermedad y no debe usarse para tomar decisiones clínicas.</p></div>
+      <div class="candidate-list">{% for disease in candidates %}<article class="candidate"><div class="candidate-heading"><div><h3>{{ disease.name }}</h3><span class="muted">{{ disease.id }}</span></div><span class="score">{{ disease.score }}<small>% de similitud</small></span></div>
+        <p>{{ disease.matched|length }} fenotipo(s) coincidente(s): {{ disease_phenotypes[disease.id]|join(", ") }}</p>
+        <form method="post" action="{{ url_for('join') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="disease_id" value="{{ disease.id }}"><button class="button secondary" type="submit">Explorar comunidad</button></form>
+      </article>{% endfor %}</div>
+    {% endif %}
+  </section>
+  {% if gene_candidates %}
+  <section class="panel">
+    <p class="eyebrow">ASOCIACIONES FENOTIPO-GEN</p><h2>Genes candidatos para explorar</h2>
+    <div class="notice"><strong>No son genes confirmados como afectados</strong><p>Son genes que aparecen asociados a uno o más fenotipos HPO descritos. Esto no identifica variantes ni confirma una causa genética. Solo un profesional puede interpretar pruebas genéticas.</p></div>
+    <div class="community-grid">
+      {% for candidate in gene_candidates %}
+      <article class="community-card"><span class="tag">Gen candidato · {{ candidate.matched|length }} fenotipo(s)</span><h3>{{ candidate.symbol }}</h3>
+        <p>Asociado en HPO con: {{ candidate.matched_labels|join(", ") }}</p>
+        <form method="post" action="{{ url_for('join_candidate_gene') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="gene" value="{{ candidate.symbol }}"><button class="button secondary" type="submit">Abrir comunidad de interés</button></form>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% elif user.role == "patient" and hpo_items and not gene_data_loaded %}
+  <section class="panel"><p class="muted">Para sugerir genes asociados hace falta el archivo oficial <code>genes_to_phenotype.txt</code>. HPO no permite concluir qué genes están afectados solo por síntomas.</p></section>
+  {% endif %}
+  <section class="panel graph-invite"><h2>Conecta con otras personas</h2><p>El grafo muestra por nombre solo a quienes dieron su consentimiento. Puedes elegirlo o retirarlo en cualquier momento desde tu perfil.</p><a class="button secondary" href="{{ url_for('gene_graph') }}">Ver grafo de genes</a></section>
+{% else %}
+  <section class="panel researcher-panel"><p class="eyebrow">ÁREA DE CONOCIMIENTO</p><h2>{{ user.condition or "Elige una enfermedad de interés" }}</h2><p>Revisa las fuentes del atlas y explora literatura científica sobre el tema. La plataforma no interpreta resultados clínicos.</p><a class="button secondary" href="{{ pubmed_url }}" target="_blank" rel="noopener">Buscar artículos en PubMed ↗</a> <a class="button secondary" href="{{ url_for('sources') }}">Ver fuentes</a></section>
+{% endif %}
+{% if user.role == "patient" and not user.diagnosed %}
+<details class="panel"><summary><strong>¿Ya recibiste un diagnóstico?</strong><span class="muted"> Actualiza tu información para encontrar comunidades por gen.</span></summary>
+  <form method="post" action="{{ url_for('mark_diagnosed') }}" class="form-grid spaced">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Genes afectados (separa varios con comas)<input name="genes" required maxlength="1000" placeholder="Ej.: GEN1, GEN2"></label>
+    <label>Síntomas actuales<textarea name="symptoms" required rows="3" maxlength="6000">{{ user.symptoms }}</textarea></label>
+    <button class="button primary" type="submit">Actualizar a diagnosticado/a</button>
+    <p class="hint full">Anota solo genes que te haya confirmado tu profesional de salud. No ingreses datos genéticos de otra persona.</p>
+  </form>
+</details>
+{% endif %}
+<section class="panel"><div class="panel-heading"><div><p class="eyebrow">PERSONAS Y CONVERSACIONES</p><h2>Tus comunidades</h2></div></div>
+  {% if communities %}<div class="community-grid">{% for community in communities %}<article class="community-card"><span class="tag">{{ "Gen candidato" if community.basis == "candidate_gene" else ("Por gen" if community.basis == "gene" else "Por enfermedad") }}</span><h3>{{ community.name }}</h3><p>{{ community.members }} miembro(s)</p><a href="{{ url_for('community', community_id=community.id) }}">Abrir conversación →</a>
+    <form method="post" action="{{ url_for('leave_community', community_id=community.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="text-button">Salir de esta comunidad</button></form>
+  </article>{% endfor %}</div>{% else %}<p class="muted">Aún no perteneces a una comunidad. Cuando tengas un diagnóstico confirmado, puedes editar tu condición; si no, explora coincidencias orientativas cuando estén disponibles.</p>{% endif %}
+</section>
+{% if communities %}
+<section class="panel"><p class="eyebrow">ACTIVIDAD</p><h2>Mensajes recientes</h2>
+  {% if posts %}<ul class="post-list">{% for post in posts %}<li><strong>{{ post.name }}</strong> en <a href="{{ url_for('community', community_id=post.community_id) }}">{{ post.community_name }}</a><p>{{ post.body }}</p><time>{{ post.created_at }}</time></li>{% endfor %}</ul>{% else %}<p class="muted">Todavía no hay mensajes en tus comunidades.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

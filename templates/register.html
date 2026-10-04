@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Crear cuenta | MEDDECK{% endblock %}
+{% block content %}
+<section class="form-shell">
+  <p class="eyebrow">EMPIEZA CON LO BÁSICO</p><h1>Crear tu cuenta</h1>
+  <p class="muted">Solo compartiremos en una comunidad lo que escribas en sus conversaciones. Tus datos de contacto no se muestran a otros miembros.</p>
+  <form method="post" class="form-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="form-grid">
+      <label>Nombre<input name="name" required maxlength="100" autocomplete="name"></label>
+      <label>Correo electrónico<input name="email" type="email" required autocomplete="email"></label>
+      <label>Contraseña <span class="hint">(mínimo 10 caracteres)</span><input name="password" type="password" minlength="10" required autocomplete="new-password"></label>
+      <label>Edad<input name="age" type="number" min="18" max="120" required></label>
+      <label>Sexo
+        <select name="sex" required><option value="">Seleccionar</option>{% for value,label in sex_options.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+      </label>
+      <label>Tu rol
+        <select id="role" name="role" required><option value="">Seleccionar</option><option value="patient">Paciente</option><option value="doctor">Médico</option><option value="researcher">Investigador</option></select>
+      </label>
+      <div id="diagnosis-question" class="full" hidden>
+        <label>¿Tienes un diagnóstico confirmado?
+          <select id="diagnosed" name="diagnosed"><option value="no">No</option><option value="yes">Sí</option></select>
+        </label>
+      </div>
+      <div id="condition-field" class="full"><label><span id="condition-title">Enfermedad de interés</span><input name="condition" maxlength="160" placeholder="Escribe el nombre de la condición"></label></div>
+      <label id="patient-fields" class="full" hidden>Síntomas que deseas compartir
+        <textarea name="symptoms" rows="4" maxlength="6000" placeholder="Describe tus síntomas con tus propias palabras. Evita incluir datos que te identifiquen."></textarea>
+      </label>
+      <label class="check-row full"><input type="checkbox" name="consent_ai" value="yes"><span>Autorizo que mis síntomas se envíen a OpenAI para sugerir términos HPO. No se enviarán mi nombre ni mi correo. Es opcional y puedo continuar sin marcarlo.</span></label>
+      <label class="check-row full"><input type="checkbox" name="consent_gene_graph" value="yes"><span>Quiero aparecer en el grafo global de genes con mi nombre y los genes candidatos relacionados con mis síntomas. Este dato será visible para usuarios con cuenta. Es opcional; puedo retirarlo después desde Mi perfil.</span></label>
+      <p class="hint full">Esta versión es solo para personas adultas. Al crear la cuenta se guardan tus datos en una base local; no la expongas a internet con datos reales.</p>
+    </div>
+    <button class="button primary" type="submit">Crear cuenta</button>
+  </form>
+</section>
+{% endblock %}

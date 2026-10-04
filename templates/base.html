@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f8f7">
+  <title>{% block title %}MEDDECK{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='gene-graph.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('home') }}" aria-label="MEDDECK inicio"><span class="brand-mark">M</span> MEDDECK</a>
+    <nav aria-label="Navegación principal">
+      <a href="{{ url_for('atlas') }}">Atlas</a>
+      <a href="{{ url_for('sources') }}">Fuentes</a>
+      {% if current_user %}
+        <a href="{{ url_for('dashboard') }}">Mi espacio</a>
+        <a href="{{ url_for('gene_graph') }}">Grafo de genes</a>
+        <a href="{{ url_for('profile') }}">Mi perfil</a>
+        <form class="nav-form" method="post" action="{{ url_for('logout') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="text-button" type="submit">Salir</button>
+        </form>
+      {% else %}
+        <a href="{{ url_for('login') }}">Iniciar sesión</a>
+        <a class="nav-join" href="{{ url_for('register') }}">Crear cuenta</a>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="page">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-stack" role="status">
+          {% for category, message in messages %}<p class="flash {{ category }}">{{ message }}</p>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="footer">
+    <span>MEDDECK · Ciencia que conecta, explicada con cuidado.</span>
+    <span>No ofrece diagnósticos ni sustituye la atención médica.</span>
+  </footer>
+  <script>
+    const role = document.querySelector("#role");
+    const patientFields = document.querySelector("#patient-fields");
+    const diagnosis = document.querySelector("#diagnosed");
+    function updateForm() {
+      if (!role) return;
+      const patient = role.value === "patient";
+      if (patientFields) patientFields.hidden = !patient;
+      const symptoms = document.querySelector('textarea[name="symptoms"]');
+      if (symptoms) symptoms.required = patient;
+      const diagnosisQuestion = document.querySelector("#diagnosis-question");
+      if (diagnosisQuestion) diagnosisQuestion.hidden = !patient;
+      const conditionField = document.querySelector("#condition-field");
+      const conditionInput = document.querySelector('input[name="condition"]');
+      const diagnosed = diagnosis && diagnosis.value === "yes";
+      if (conditionField) conditionField.hidden = !role.value || (patient && !diagnosed);
+      if (conditionInput) conditionInput.required = !patient || diagnosed;
+      const conditionTitle = document.querySelector("#condition-title");
+      if (conditionTitle) conditionTitle.textContent = patient ? "Condición diagnosticada" : "Enfermedad de interés";
+    }
+    role?.addEventListener("change", updateForm);
+    diagnosis?.addEventListener("change", updateForm);
+    updateForm();
+  </script>
+</body>
+</html>

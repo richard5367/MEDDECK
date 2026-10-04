@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Fuentes confiables | MEDDECK{% endblock %}
+{% block content %}
+<section class="welcome-row"><div><p class="eyebrow">REFERENCIAS EXTERNAS</p><h1>Fuentes confiables</h1><p class="muted">Enlaces directos para consultar la fuente original. MEDDECK no copia ni reemplaza sus contenidos.</p></div></section>
+<section class="source-grid">{% for name,description,url in sources %}<article class="source-card"><p class="eyebrow">FUENTE</p><h2>{{ name }}</h2><p>{{ description }}</p><a href="{{ url }}" target="_blank" rel="noopener noreferrer">Visitar {{ name }} ↗</a></article>{% endfor %}</section>
+<section class="notice"><strong>Datos biomédicos y permisos</strong><p>El atlas y las asociaciones candidato-gen usan la ontología y archivos públicos HPO. OMIM tiene condiciones de uso y servicios que pueden requerir acceso autorizado; esta versión no realiza scraping ni integra su API. PubMed se ofrece mediante enlaces de búsqueda. Antes de incorporar o redistribuir datos, revisa licencia, atribución, fecha y condiciones de cada fuente.</p></section>
+{% endblock %}

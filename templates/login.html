@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Iniciar sesión | MEDDECK{% endblock %}
+{% block content %}
+<section class="form-shell narrow">
+  <p class="eyebrow">QUÉ BUENO VERTE</p><h1>Iniciar sesión</h1>
+  <form method="post" class="form-card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Correo electrónico<input type="email" name="email" required autocomplete="email"></label>
+    <label>Contraseña<input type="password" name="password" required autocomplete="current-password"></label>
+    <button class="button primary" type="submit">Entrar</button>
+  </form>
+</section>
+{% endblock %}

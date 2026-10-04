@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Atlas | MEDDECK{% endblock %}
+{% block content %}
+<section class="welcome-row"><div><p class="eyebrow">EXPLORAR CONEXIONES</p><h1>Atlas de fenotipos</h1><p class="muted">Un mapa navegable entre enfermedades y fenotipos descritos en HPO.</p></div><a class="button secondary" href="{{ url_for('sources') }}">Explorar fuentes</a></section>
+<section class="panel">
+  {% if data_loaded %}
+    <div class="legend"><span><i class="dot disease"></i> Enfermedad</span><span><i class="dot phenotype"></i> Fenotipo HPO</span><span class="muted">Se muestran hasta 150 enfermedades y 10 términos por enfermedad.</span></div>
+    <div class="graph" aria-label="Relaciones entre enfermedad y fenotipo HPO">
+      {% for edge in edges %}<article class="graph-edge"><span class="node disease-node">{{ edge.disease }} <small>{{ edge.disease_id }}</small></span><span class="edge-line" aria-hidden="true">······</span><span class="node phenotype-node">{{ edge.phenotype }} <small>{{ edge.phenotype_id }}</small></span></article>{% endfor %}
+    </div>
+    {% if not edges %}<p>No se encontraron relaciones para mostrar.</p>{% endif %}
+  {% else %}<div class="empty-state"><div class="empty-icon">⌘</div><h2>El atlas espera sus datos</h2><p>Configura <code>HPOA_PATH</code> y <code>HPO_OBO_PATH</code> con los archivos oficiales de Human Phenotype Ontology para ver relaciones reales.</p><p>No se muestran datos médicos de ejemplo para evitar confundirlos con evidencia real.</p><a href="{{ url_for('sources') }}">Ver instrucciones y fuentes</a></div>{% endif %}
+</section>
+{% endblock %}

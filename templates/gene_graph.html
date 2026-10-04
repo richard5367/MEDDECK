@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Grafo de genes | MEDDECK{% endblock %}
+{% block content %}
+<section class="welcome-row"><div><p class="eyebrow">CONEXIONES CON CONSENTIMIENTO</p><h1>Grafo de genes</h1><p class="muted">Conecta asociaciones HPO de fenotipos con genes candidatos y personas que aceptaron mostrarse por nombre.</p></div><a class="button secondary" href="{{ url_for('dashboard') }}">Mi espacio</a></section>
+<section class="notice"><strong>Los genes no están confirmados como afectados</strong><p>Este grafo relaciona genes con fenotipos descritos y con los nombres de personas que dieron consentimiento explícito. No muestra correos ni síntomas. Una asociación no demuestra que una persona tenga una variante ni que el gen explique su condición.</p></section>
+{% if genes %}
+  {% for gene in genes %}
+  <section class="panel gene-network" aria-label="Relaciones del gen {{ gene.symbol }}">
+    <div class="gene-network-heading"><span class="gene-node">{{ gene.symbol }}</span><span class="muted">Gen candidato · {{ gene.members|length }} participante(s) visible(s)</span></div>
+    <div class="gene-connections">
+      {% for member in gene.members %}
+      <div class="gene-connection"><span class="connector" aria-hidden="true"></span><span class="user-node">{{ member.name }}</span></div>
+      {% endfor %}
+    </div>
+    <form method="post" action="{{ url_for('join_candidate_gene') }}" class="join-gene-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="gene" value="{{ gene.symbol }}">
+      <button class="button secondary" type="submit">Unirme a la comunidad para conversar</button>
+    </form>
+  </section>
+  {% endfor %}
+{% else %}
+<section class="panel empty-state"><div class="empty-icon">⌘</div><h2>Aún no hay conexiones públicas</h2><p>El grafo solo muestra personas adultas que dieron su consentimiento explícito y tienen genes candidatos asociados. Puedes habilitar o retirar tu consentimiento desde Mi perfil.</p><a href="{{ url_for('profile') }}">Revisar consentimiento del grafo</a></section>
+{% endif %}
+{% endblock %}
