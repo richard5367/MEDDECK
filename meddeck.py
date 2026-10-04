@@ -3,6 +3,7 @@ import os
 import re
 import secrets
 import sqlite3
+import tempfile
 import urllib.error
 import urllib.request
 from collections import defaultdict
@@ -16,8 +17,6 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_DB = BASE_DIR / "instance" / "meddeck.sqlite"
-DEFAULT_SECRET_FILE = BASE_DIR / "instance" / "flask-secret.key"
 HP_ID = re.compile(r"^HP:\d{7}$")
 ROLES = {"patient": "Patient", "doctor": "Doctor", "researcher": "Researcher"}
 SEX_OPTIONS = {"female": "Female", "male": "Male", "intersex": "Intersex", "prefer_not": "Prefer not to say"}
@@ -65,19 +64,64 @@ def load_dotenv_file(path=None, override=False):
 load_dotenv_file()
 
 
+def _is_writable_dir(path):
+    """Return True when the directory exists (or can be created) and accepts writes."""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".meddeck-write-probe"
+        probe.write_text("", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _resolve_data_dir():
+    """Prefer ./instance, but fall back to a writable dir when running on a read-only filesystem.
+
+    Serverless hosts such as Vercel ship the project as read-only and only allow writes
+    under the system temp directory, so the database and secret file have to live elsewhere.
+    """
+    configured = os.environ.get("MEDDECK_DATA_DIR")
+    if configured:
+        candidate = Path(configured)
+        if _is_writable_dir(candidate):
+            return candidate
+    instance_dir = BASE_DIR / "instance"
+    if _is_writable_dir(instance_dir):
+        return instance_dir
+    fallback = Path(tempfile.gettempdir()) / "meddeck"
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+DATA_DIR = _resolve_data_dir()
+DEFAULT_DB = DATA_DIR / "meddeck.sqlite"
+DEFAULT_SECRET_FILE = DATA_DIR / "flask-secret.key"
+
+
 def load_or_create_secret(path):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
     try:
         return path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
-        secret = secrets.token_urlsafe(48)
-        try:
-            with path.open("x", encoding="utf-8") as secret_file:
-                secret_file.write(secret)
-        except FileExistsError:
-            return path.read_text(encoding="utf-8").strip()
+        pass
+    except OSError:
+        # No persistent store available: fall back to an ephemeral secret for this process.
+        return secrets.token_urlsafe(48)
+    secret = secrets.token_urlsafe(48)
+    try:
+        with path.open("x", encoding="utf-8") as secret_file:
+            secret_file.write(secret)
+    except FileExistsError:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
         return secret
+    return secret
 
 
 def connect_db(path):
